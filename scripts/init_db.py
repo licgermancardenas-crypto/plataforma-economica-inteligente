@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+Inicializa la base SQLite y siembra el catálogo de indicadores/series validadas.
+=================================================================================
+Crea data/plataforma.db a partir de sql/schema.sql y carga:
+  - fuentes de datos
+  - los 6 indicadores núcleo
+  - las series concretas con sus IDs canónicos (ver docs/fuentes_validadas.md)
+  - banderas y reglas de calidad de datos
+
+Es idempotente: se puede reejecutar (usa INSERT OR REPLACE en el catálogo).
+NO ingiere observaciones — eso es la Etapa 3 (pipeline de ingesta).
+
+Uso:
+    python3 scripts/init_db.py
+"""
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = ROOT / "data" / "plataforma.db"
+SCHEMA = ROOT / "sql" / "schema.sql"
+
+# ---------------------------------------------------------------------------
+# Catálogo (fuente de verdad del pipeline)
+# ---------------------------------------------------------------------------
+SOURCES = [
+    ("bcra",           "Banco Central de la República Argentina (API v4.0)",
+     "https://api.bcra.gob.ar/estadisticas/v4.0", "Monetarias. verify=False si falla SSL."),
+    ("indec_datosgob", "INDEC vía API Series de Tiempo del Estado",
+     "https://apis.datos.gob.ar/series/api", "IDs canónicos por serie."),
+    ("argentinadatos", "ArgentinaDatos (histórico de cotizaciones)",
+     "https://api.argentinadatos.com/v1", "Histórico de dólar desde 2011 (oficial/blue/MEP/CCL)."),
+    ("dolarapi",       "dolarApi (cotización en tiempo real)",
+     "https://dolarapi.com/v1", "Solo valor actual. Fallback tiempo real del TC."),
+]
+
+INDICATORS = [
+    ("inflacion",    "Inflación (IPC)",              "precios",
+     "Índice de precios al consumidor nacional, nivel general y núcleo."),
+    ("tipo_cambio",  "Tipo de cambio y brecha",      "cambiario",
+     "Cotizaciones oficial, MEP, CCL y blue; brecha respecto del oficial."),
+    ("tasa",         "Tasa de referencia",           "monetario",
+     "Tasa de referencia de mercado (TAMAR). Pases pasivos en 0 desde 2024/25."),
+    ("actividad",    "Actividad económica (EMAE)",   "actividad",
+     "Estimador Mensual de Actividad Económica, original y desestacionalizado."),
+    ("monetario",    "Reservas y base monetaria",    "externo",
+     "Reservas internacionales del BCRA y base monetaria."),
+    ("empleo",       "Mercado laboral (EPH)",        "empleo",
+     "Tasa de desocupación nacional (EPH, trimestral)."),
+]
+
+# series_id, indicator, source, external_id, name, unit, freq, sa, kind, scale, base, notes
+SERIES = [
+    ("ipc_general",   "inflacion",   "indec_datosgob", "148.3_INIVELNAL_DICI_M_26",
+     "IPC Nivel General Nacional", "índice dic-2016=100", "M", "none", "index", 1.0, "dic-2016", None),
+    ("ipc_nucleo",    "inflacion",   "indec_datosgob", "148.3_INUCLEONAL_DICI_M_19",
+     "IPC Núcleo Nacional", "índice dic-2016=100", "M", "none", "index", 1.0, "dic-2016",
+     "Aísla ruido de regulados/estacionales."),
+
+    ("usd_oficial",   "tipo_cambio", "argentinadatos", "oficial",
+     "Dólar oficial (venta)", "ARS/USD", "D", "none", "level", 1.0, None, "Histórico desde 2011."),
+    ("usd_mep",       "tipo_cambio", "argentinadatos", "bolsa",
+     "Dólar MEP/Bolsa (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
+    ("usd_ccl",       "tipo_cambio", "argentinadatos", "contadoconliqui",
+     "Dólar CCL (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
+    ("usd_blue",      "tipo_cambio", "argentinadatos", "blue",
+     "Dólar blue (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
+    ("tc_mayorista",  "tipo_cambio", "bcra", "5",
+     "Tipo de cambio mayorista de referencia", "ARS/USD", "D", "none", "level", 1.0, None,
+     "TC oficial de referencia BCRA; base para TC real."),
+
+    ("tamar_priv",    "tasa",        "bcra", "44",
+     "TAMAR bancos privados (TNA)", "% nominal anual", "D", "none", "rate", 1.0, None,
+     "Proxy de tasa de referencia. REVISAR según régimen monetario."),
+
+    ("emae_original", "actividad",   "indec_datosgob", "143.3_NO_PR_2004_A_21",
+     "EMAE serie original", "índice 2004=100", "M", "none", "index", 1.0, "2004", None),
+    ("emae_desest",   "actividad",   "indec_datosgob", "302.3_S_DESEST_NRAL_0_S_19",
+     "EMAE desestacionalizada", "índice 2004=100", "M", "sa", "index", 1.0, "2004",
+     "Desestacionalización oficial INDEC."),
+
+    ("reservas",      "monetario",   "bcra", "1",
+     "Reservas internacionales", "millones USD", "D", "none", "level", 1.0, None, None),
+    ("base_monetaria","monetario",   "bcra", "15",
+     "Base monetaria", "millones ARS", "D", "none", "level", 1.0, None, None),
+
+    ("desempleo",     "empleo",      "indec_datosgob", "42.3_EPH_PUNTUATAL_0_M_30",
+     "Tasa de desocupación nacional", "%", "Q", "none", "rate", 100.0, None,
+     "Fuente devuelve fracción (0.078); scale=100 la normaliza a 7.8."),
+]
+
+QUALITY_FLAGS = [
+    ("OK",          "Dato oficial definitivo sin observaciones."),
+    ("PROVISORIO",  "Dato sujeto a revisión oficial."),
+    ("INTERVENIDO", "Período de intervención del organismo (calidad estadística comprometida)."),
+    ("REBASE",      "Cambio de base/empalme que puede afectar comparabilidad."),
+    ("ESTIMADO",    "Valor estimado/imputado, no observado directamente."),
+]
+
+# Reglas de calidad conocidas. La serie IPC nacional vigente arranca en dic-2016
+# (post-intervención), así que esta regla no marcará datos hoy; queda documentada
+# para el día que se empalme una serie larga de IPC hacia atrás.
+QUALITY_PERIODS = [
+    ("inflacion", None, "2007-01-01", "2015-12-01", "INTERVENIDO",
+     "IPC-GBA bajo intervención del INDEC; no usar para inferencia sin ajuste."),
+]
+
+
+def main():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(DB_PATH)
+    con.execute("PRAGMA foreign_keys = ON")
+    con.executescript(SCHEMA.read_text(encoding="utf-8"))
+
+    con.executemany("INSERT OR REPLACE INTO sources VALUES (?,?,?,?)", SOURCES)
+    con.executemany("INSERT OR REPLACE INTO indicators VALUES (?,?,?,?)", INDICATORS)
+    con.executemany(
+        "INSERT OR REPLACE INTO series "
+        "(series_id,indicator_id,source_id,external_id,name,unit,frequency,"
+        " seasonal_adj,kind,scale,base_period,notes) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", SERIES)
+    con.executemany("INSERT OR REPLACE INTO quality_flags VALUES (?,?)", QUALITY_FLAGS)
+    # quality_periods no tiene clave natural; limpiamos y recargamos para idempotencia
+    con.execute("DELETE FROM quality_periods")
+    con.executemany(
+        "INSERT INTO quality_periods "
+        "(indicator_id,series_id,date_from,date_to,flag_code,note) VALUES (?,?,?,?,?,?)",
+        QUALITY_PERIODS)
+    con.commit()
+
+    # Verificación
+    print(f"Base creada en: {DB_PATH}")
+    for tabla in ("sources", "indicators", "series", "quality_flags", "quality_periods"):
+        n = con.execute(f"SELECT COUNT(*) FROM {tabla}").fetchone()[0]
+        print(f"  {tabla:16} {n} filas")
+    print("\nSeries por indicador:")
+    for ind, cnt in con.execute(
+        "SELECT indicator_id, COUNT(*) FROM series GROUP BY indicator_id ORDER BY indicator_id"):
+        print(f"  {ind:14} {cnt}")
+    con.close()
+
+
+if __name__ == "__main__":
+    main()

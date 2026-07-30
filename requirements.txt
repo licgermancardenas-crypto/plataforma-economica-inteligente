@@ -1,0 +1,21 @@
+# Plataforma Económica Inteligente — dependencias
+# Etapa actual: ingesta y análisis. Se irá ampliando por etapas.
+
+# --- Ingesta / datos ---
+requests>=2.32
+pandas>=2.2
+numpy>=2.1
+
+# --- Análisis estadístico / econometría (etapas 6-7) ---
+statsmodels>=0.14        # OLS, VAR, VECM, ADF/KPSS, X-13 wrapper
+scipy>=1.13
+
+# --- Dashboard (etapa 4-5) ---
+# streamlit>=1.37
+# plotly>=5.22
+
+# --- ML / nowcasting (etapa 7) ---
+scikit-learn>=1.5        # ElasticNet para nowcasting de inflación
+
+# --- IA (etapa 8) ---
+# cliente del proveedor de LLM que se elija

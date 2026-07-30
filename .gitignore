@@ -1,0 +1,22 @@
+# --- Datos generados (reproducibles con init_db.py + ingest.py) ---
+data/*.db
+data/raw/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# --- Entorno / editores / herramientas locales ---
+.claude/
+.env
+.DS_Store
+.idea/
+.vscode/
+
+# --- Imágenes sueltas en la raíz (no son del proyecto) ---
+/*.jpg
+/*.png
