@@ -23,16 +23,19 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
   pass-through, VAR + impulso-respuesta, curva de Phillips y nowcasting de inflación con ML
   (ElasticNet, walk-forward). Reporte: `python3 scripts/analisis.py`. Hallazgos en
   [`docs/hallazgos_econometricos.md`](docs/hallazgos_econometricos.md).
-- ⬜ Etapa 4-5 — Dashboard (Streamlit + Plotly).
+- ✅ **Etapa 4-5 — Dashboard (`dashboard/app.py`, Streamlit + Plotly).** Cockpit de
+  indicadores, detalle por indicador con gráficos y tablas exportables, y panel de
+  econometría. Corre local con `streamlit run dashboard/app.py`.
 - ⬜ Etapa 8 — Capa de IA (LLM vía API).
 
 ## Estructura
 
 ```
-platec/     núcleo analítico (data.py, stats.py)
-scripts/    utilidades ejecutables (validate_sources.py, init_db.py, ingest.py)
+platec/     núcleo analítico (data, stats, econometria, nowcast)
+dashboard/  app Streamlit (app.py) + bootstrap de datos
+scripts/    utilidades ejecutables (validate_sources, init_db, ingest, analisis)
 sql/        DDL del esquema (schema.sql)
-docs/       documentación técnica (fuentes validadas)
+docs/       documentación técnica (fuentes validadas, hallazgos econométricos)
 data/       plataforma.db (SQLite) y data/raw/ (reportes, crudos)
 ```
 
@@ -40,8 +43,17 @@ data/       plataforma.db (SQLite) y data/raw/ (reportes, crudos)
 
 ```bash
 pip install -r requirements.txt          # o instalar a nivel usuario
-python3 scripts/validate_sources.py      # revalidar acceso a las 5 fuentes
+python3 scripts/init_db.py               # crea la base y siembra el catálogo
+python3 scripts/ingest.py                # descarga el histórico de las 13 series
+python3 scripts/analisis.py              # reporte econométrico en consola
+streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 ```
+
+### Deploy (Streamlit Community Cloud)
+1. En [share.streamlit.io](https://share.streamlit.io) conectar este repo.
+2. Main file path: `dashboard/app.py`.
+3. La primera carga corre `init_db` + `ingest` automáticamente (`dashboard/bootstrap.py`),
+   así que la base **no** se versiona: se reconstruye desde las APIs en el server.
 
 > Entorno: Python 3.13. Para aislar en venv hace falta `apt install python3.13-venv`
 > (el sistema trae `venv` sin `ensurepip`).
