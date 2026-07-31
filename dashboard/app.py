@@ -1,8 +1,8 @@
 """
 Plataforma Económica Inteligente — Dashboard (Streamlit).
 =========================================================
-Cockpit de indicadores núcleo + vistas de detalle con gráficos y tablas +
-panel de econometría. Se apoia en el núcleo analítico `platec`.
+Cockpit de indicadores núcleo + explorador con filtros dinámicos e insights
+automáticos + panel de econometría. Se apoya en el núcleo analítico `platec`.
 
 Ejecutar local:   streamlit run dashboard/app.py
 Deploy:           Streamlit Community Cloud (apunta a este archivo).
@@ -25,7 +25,8 @@ from bootstrap import ensure_data
 warnings.filterwarnings("ignore")
 
 st.set_page_config(page_title="Plataforma Económica Inteligente",
-                   page_icon="📊", layout="wide")
+                   page_icon="📊", layout="wide",
+                   initial_sidebar_state="expanded")
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +41,7 @@ def _boot():
 _boot()
 from platec import data, stats  # noqa: E402  (import tras asegurar la DB)
 from platec import econometria as ec  # noqa: E402
+from platec import insights as ins  # noqa: E402
 from platec import nowcast  # noqa: E402
 
 
@@ -59,97 +61,221 @@ def catalogo() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Componentes de gráfico
+# Estilo (paleta + CSS)
 # ---------------------------------------------------------------------------
 COLOR = {"primario": "#1f4e79", "acento": "#e67e22", "verde": "#2e8b57",
-         "gris": "#7f8c8d", "rojo": "#c0392b"}
+         "gris": "#7f8c8d", "rojo": "#c0392b", "violeta": "#7d5ba6"}
+PALETA = [COLOR["primario"], COLOR["acento"], COLOR["verde"],
+          COLOR["violeta"], COLOR["rojo"], COLOR["gris"]]
+TONO_COLOR = {"alza": "#c0392b", "baja": "#2e8b57", "alerta": "#e67e22", "neutro": "#7f8c8d"}
+TONO_ICONO = {"alza": "🔺", "baja": "🔻", "alerta": "⚠️", "neutro": "•"}
+
+_CSS = """
+<style>
+  .block-container {padding-top: 2.2rem; padding-bottom: 2rem; max-width: 1400px;}
+  [data-testid="stMetric"] {
+      background: #f7f9fb; border: 1px solid #e6ebf0; border-radius: 12px;
+      padding: 14px 16px 10px 16px;
+  }
+  [data-testid="stMetricLabel"] p {font-size: 0.85rem; color: #556; font-weight: 600;}
+  [data-testid="stMetricValue"] {font-size: 1.7rem;}
+  .insight-card {
+      background: #f7f9fb; border-left: 4px solid #1f4e79; border-radius: 8px;
+      padding: 10px 14px; margin-bottom: 8px; font-size: 0.92rem; line-height: 1.4;
+  }
+  .hero {
+      background: linear-gradient(100deg, #1f4e79 0%, #2c6ba0 100%);
+      color: #fff; padding: 20px 26px; border-radius: 14px; margin-bottom: 18px;
+  }
+  .hero h1 {color:#fff; font-size: 1.7rem; margin: 0 0 4px 0;}
+  .hero p {color:#dce7f2; margin: 0; font-size: 0.95rem;}
+</style>
+"""
+st.markdown(_CSS, unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Componentes de gráfico
+# ---------------------------------------------------------------------------
+def _estilo(fig: go.Figure, height: int = 420, leyenda: bool = True) -> go.Figure:
+    fig.update_layout(
+        template="plotly_white", height=height, hovermode="x unified",
+        margin=dict(t=54, b=30, l=10, r=10), font=dict(family="sans-serif", size=13),
+        title=dict(font=dict(size=16, color=COLOR["primario"])),
+        legend=dict(orientation="h", y=-0.18, x=0) if leyenda else dict(),
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(gridcolor="#eef2f5", zeroline=False)
+    return fig
+
+
+def _selector_rango(fig: go.Figure, slider: bool = True) -> go.Figure:
+    """Añade botones de rango temporal y (opcional) mini-slider al eje X."""
+    fig.update_xaxes(
+        rangeselector=dict(
+            buttons=[
+                dict(count=6, label="6M", step="month", stepmode="backward"),
+                dict(count=1, label="1A", step="year", stepmode="backward"),
+                dict(count=3, label="3A", step="year", stepmode="backward"),
+                dict(count=5, label="5A", step="year", stepmode="backward"),
+                dict(step="all", label="Todo"),
+            ],
+            bgcolor="#eef2f5", activecolor=COLOR["primario"], y=1.12,
+        ),
+        rangeslider=dict(visible=slider, thickness=0.06),
+    )
+    return fig
 
 
 def linea(series: dict[str, pd.Series], titulo: str, ytitulo: str,
-          step: bool = False) -> go.Figure:
+          step: bool = False, rango: bool = True, area: bool = False,
+          log: bool = False) -> go.Figure:
     fig = go.Figure()
-    paleta = list(COLOR.values())
     for i, (nombre, s) in enumerate(series.items()):
+        color = PALETA[i % len(PALETA)]
         fig.add_trace(go.Scatter(
             x=s.index, y=s.values, name=nombre, mode="lines",
-            line=dict(width=2, color=paleta[i % len(paleta)],
-                      shape="hv" if step else "linear")))
-    fig.update_layout(title=titulo, yaxis_title=ytitulo, height=420,
-                      hovermode="x unified", margin=dict(t=50, b=20),
-                      legend=dict(orientation="h", y=-0.2))
+            line=dict(width=2.3, color=color, shape="hv" if step else "linear"),
+            fill="tozeroy" if area and len(series) == 1 else None,
+            fillcolor="rgba(31,78,121,0.08)" if area else None))
+    _estilo(fig, leyenda=len(series) > 1)
+    fig.update_layout(title=titulo, yaxis_title=ytitulo)
+    if log:
+        fig.update_yaxes(type="log")
+    if rango:
+        _selector_rango(fig)
     return fig
 
 
-def barras(s: pd.Series, titulo: str, ytitulo: str) -> go.Figure:
-    fig = go.Figure(go.Bar(x=s.index, y=s.values, marker_color=COLOR["primario"]))
-    fig.update_layout(title=titulo, yaxis_title=ytitulo, height=420,
-                      margin=dict(t=50, b=20))
+def barras(s: pd.Series, titulo: str, ytitulo: str, rango: bool = False) -> go.Figure:
+    colores = [COLOR["rojo"] if v < 0 else COLOR["primario"] for v in s.values]
+    fig = go.Figure(go.Bar(x=s.index, y=s.values, marker_color=colores))
+    _estilo(fig, leyenda=False)
+    fig.update_layout(title=titulo, yaxis_title=ytitulo)
+    if rango:
+        _selector_rango(fig, slider=False)
     return fig
+
+
+def sparkline(s: pd.Series, color: str) -> go.Figure:
+    s = s.dropna()
+    fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines",
+                               line=dict(width=2, color=color),
+                               fill="tozeroy", fillcolor="rgba(31,78,121,0.07)"))
+    fig.update_layout(height=70, margin=dict(t=2, b=2, l=2, r=2),
+                      xaxis=dict(visible=False), yaxis=dict(visible=False),
+                      showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
+                      paper_bgcolor="rgba(0,0,0,0)")
+    return fig
+
+
+def panel_insights(items: list[dict], titulo: str = "Lectura automática"):
+    st.markdown(f"**🧠 {titulo}**")
+    if not items:
+        st.caption("Sin observaciones destacadas.")
+        return
+    for it in items:
+        color = TONO_COLOR.get(it["tono"], "#7f8c8d")
+        icono = TONO_ICONO.get(it["tono"], "•")
+        st.markdown(
+            f'<div class="insight-card" style="border-left-color:{color}">'
+            f'{icono} {it["texto"]}</div>', unsafe_allow_html=True)
 
 
 def tabla(s: pd.Series, nombre: str):
     df = s.rename(nombre).reset_index()
     df.columns = ["Fecha", nombre]
     df["Fecha"] = pd.to_datetime(df["Fecha"]).dt.date
-    st.dataframe(df.iloc[::-1], use_container_width=True, height=360,
-                 hide_index=True)
+    st.dataframe(df.iloc[::-1], use_container_width=True, height=360, hide_index=True)
     st.download_button("⬇ Descargar CSV", df.to_csv(index=False).encode("utf-8"),
                        file_name=f"{nombre}.csv", mime="text/csv")
 
 
 # ---------------------------------------------------------------------------
-# Páginas
+# Página: Cockpit
 # ---------------------------------------------------------------------------
 def pagina_cockpit():
-    st.title("📊 Cockpit — Coyuntura económica")
-    st.caption("Indicadores núcleo de la macroeconomía argentina. "
-               "Valores más recientes disponibles.")
+    st.markdown(
+        '<div class="hero"><h1>📊 Cockpit — Coyuntura económica</h1>'
+        '<p>Indicadores núcleo de la macroeconomía argentina · '
+        'seguimiento monetario-cambiario</p></div>', unsafe_allow_html=True)
 
+    # sid, label, unidad, freq, malo_si_sube, n_spark
     tiles = [
-        ("Inflación (IPC)", "ipc_general", "%", "mensual"),
-        ("Dólar oficial", "usd_oficial", "$", "diario"),
-        ("Tasa TAMAR", "tamar_priv", "% TNA", "diario"),
-        ("Actividad (EMAE desest.)", "emae_desest", "índice", "mensual"),
-        ("Reservas", "reservas", "M US$", "diario"),
-        ("Desempleo", "desempleo", "%", "trimestral"),
+        ("ipc_general", "Inflación (IPC)", "%", "mensual", True, 24),
+        ("usd_oficial", "Dólar oficial", "$", "diario", True, 180),
+        ("tamar_priv", "Tasa TAMAR", "% TNA", "diario", False, 180),
+        ("emae_desest", "Actividad (EMAE)", "índice", "mensual", False, 36),
+        ("reservas", "Reservas", "M US$", "diario", False, 180),
+        ("desempleo", "Desempleo", "%", "trimestral", True, 12),
     ]
     cols = st.columns(3)
-    for i, (label, sid, unidad, freq) in enumerate(tiles):
+    for i, (sid, label, unidad, freq, malo, n_spark) in enumerate(tiles):
         r = resumen(sid)
         with cols[i % 3]:
-            if unidad == "%" and sid in ("ipc_general",):
-                valor = f"{r['var_periodo_%']}%"      # inflación = variación
-                delta = f"{r['var_interanual_%']}% i.a."
+            if sid == "ipc_general":
+                valor, delta = f"{r['var_periodo_%']}%", f"{r['var_interanual_%']}% i.a."
             elif sid == "reservas":
-                valor = f"{r['ultimo']:,.0f}"
-                delta = f"{r['var_interanual_%']}% i.a."
+                valor, delta = f"{r['ultimo']:,.0f}", f"{r['var_interanual_%']}% i.a."
             elif sid == "desempleo":
-                valor = f"{r['ultimo']}%"
-                delta = f"{r['var_interanual_%']} pp i.a."
+                valor, delta = f"{r['ultimo']}%", f"{r['var_interanual_%']} pp i.a."
             else:
-                valor = f"{r['ultimo']:,.2f}"
-                delta = f"{r['var_periodo_%']}% vs previo"
-            st.metric(label, valor, delta)
+                valor, delta = f"{r['ultimo']:,.2f}", f"{r['var_periodo_%']}% vs previo"
+            st.metric(label, valor, delta,
+                      delta_color="inverse" if malo else "normal")
+            st.plotly_chart(sparkline(serie(sid).tail(n_spark), COLOR["primario"]),
+                            use_container_width=True, config={"displayModeBar": False})
             st.caption(f"{r['fecha']} · {freq}")
 
     st.divider()
-    # Brecha cambiaria destacada
+
+    # Brecha cambiaria + insights del dólar
     of, ccl = serie("usd_oficial"), serie("usd_ccl")
     br = stats.brecha(ccl, of)
-    c1, c2 = st.columns([1, 2])
+    br.attrs["frequency"] = "D"
+    c1, c2 = st.columns([2, 1])
     with c1:
-        st.metric("Brecha CCL vs oficial", f"{br.iloc[-1]:.1f}%",
-                  f"{br.iloc[-1] - br.iloc[-22]:.1f} pp vs. ~1 mes")
+        st.plotly_chart(linea({"Brecha CCL vs oficial %": br}, "Brecha cambiaria", "%",
+                              area=True), use_container_width=True)
     with c2:
-        st.plotly_chart(linea({"Brecha CCL %": br.tail(365)},
-                              "Brecha cambiaria (último año)", "%"),
-                        use_container_width=True)
+        st.metric("Brecha actual", f"{br.iloc[-1]:.1f}%",
+                  f"{br.iloc[-1] - br.iloc[-22]:.1f} pp vs. ~1 mes",
+                  delta_color="inverse")
+        panel_insights(ins.insights_serie(br, nombre="la brecha"))
 
 
-def pagina_detalle():
-    st.title("🔎 Detalle por indicador")
+# ---------------------------------------------------------------------------
+# Página: Explorador (detalle con filtros dinámicos)
+# ---------------------------------------------------------------------------
+TRANSFORM = {
+    "Nivel": lambda s: s,
+    "Variación período previo (%)": lambda s: stats.variacion(s, 1),
+    "Variación interanual (%)": lambda s: stats.var_interanual(s),
+}
+
+
+def _aplicar_filtros(s: pd.Series, transform: str, mm: int, log: bool,
+                     desde) -> tuple[pd.Series, bool]:
+    """Aplica transformación, recorte temporal y media móvil. Devuelve (serie, es_pct)."""
+    es_pct = transform != "Nivel"
+    out = TRANSFORM[transform](s).dropna()
+    if desde is not None:
+        out = out[out.index >= pd.Timestamp(desde)]
+    if mm > 1:
+        out = out.rolling(mm, min_periods=mm).mean().dropna()
+    out.attrs.update(s.attrs)
+    return out, es_pct
+
+
+def pagina_explorador():
+    st.title("🔎 Explorador de indicadores")
+    st.caption("Compará series, cambiá la transformación y filtrá el período. "
+               "Los insights se recalculan sobre lo que estás viendo.")
     cat = catalogo()
-    indicadores = {
+    nombres = cat.set_index("series_id")["name"].to_dict()
+
+    grupos = {
         "Inflación (IPC)": "inflacion",
         "Tipo de cambio y brecha": "tipo_cambio",
         "Tasa de referencia": "tasa",
@@ -157,49 +283,66 @@ def pagina_detalle():
         "Reservas y base monetaria": "monetario",
         "Desempleo (EPH)": "empleo",
     }
-    elegido = st.selectbox("Indicador", list(indicadores.keys()))
-    ind = indicadores[elegido]
-    series_ind = cat[cat.indicator_id == ind]
+
+    top = st.columns([2, 2])
+    grupo = top[0].selectbox("Indicador", list(grupos.keys()))
+    series_grupo = cat[cat.indicator_id == grupos[grupo]].series_id.tolist()
+    elegidas = top[1].multiselect(
+        "Series a comparar", series_grupo,
+        default=series_grupo[: min(2, len(series_grupo))],
+        format_func=lambda x: nombres.get(x, x))
+
+    f = st.columns([2, 1, 1, 1])
+    transform = f[0].radio("Transformación", list(TRANSFORM.keys()), horizontal=True)
+    mm = f[1].slider("Media móvil", 1, 12, 1, help="1 = sin suavizado")
+    log = f[2].toggle("Escala log", value=False,
+                      help="Útil para series con crecimiento exponencial (nivel).")
+    anios = f[3].selectbox("Período", ["Todo", "10 años", "5 años", "3 años", "1 año"])
+
+    if not elegidas:
+        st.info("Elegí al menos una serie para visualizar.")
+        return
+
+    desde = None
+    if anios != "Todo":
+        n = {"10 años": 10, "5 años": 5, "3 años": 3, "1 año": 1}[anios]
+        desde = pd.Timestamp.today() - pd.DateOffset(years=n)
+
+    log_efectivo = log and transform == "Nivel"
+    plot_series, es_pct = {}, False
+    for sid in elegidas:
+        s2, es_pct = _aplicar_filtros(serie(sid), transform, mm, log_efectivo, desde)
+        plot_series[nombres.get(sid, sid)] = s2
+
+    ytitulo = "%" if es_pct else "nivel"
+    titulo = f"{grupo} — {transform}" + (f" · MM{mm}" if mm > 1 else "")
 
     graf, tab = st.tabs(["📈 Gráfico", "🗃 Tabla"])
-
     with graf:
-        if ind == "inflacion":
-            infl = stats.var_intermensual(serie("ipc_general")).dropna().tail(36)
-            st.plotly_chart(barras(infl, "Inflación mensual (IPC nivel general)", "%"),
-                            use_container_width=True)
-        elif ind == "tipo_cambio":
-            fx = {r["name"]: serie(r.series_id).tail(365)
-                  for _, r in series_ind.iterrows() if r.series_id.startswith("usd")}
-            st.plotly_chart(linea(fx, "Cotizaciones del dólar (último año)", "ARS/USD"),
-                            use_container_width=True)
-        elif ind == "tasa":
-            st.plotly_chart(linea({"TAMAR (TNA)": serie("tamar_priv")},
-                                  "Tasa de referencia TAMAR", "% n.a.", step=True),
-                            use_container_width=True)
-        elif ind == "actividad":
-            st.plotly_chart(linea({"EMAE original": serie("emae_original"),
-                                   "EMAE desest.": serie("emae_desest")},
-                                  "Actividad económica (EMAE)", "índice 2004=100"),
-                            use_container_width=True)
-        elif ind == "monetario":
-            st.plotly_chart(linea({"Reservas (M US$)": serie("reservas")},
-                                  "Reservas internacionales", "millones USD"),
-                            use_container_width=True)
-            st.plotly_chart(linea({"Base monetaria (M ARS)": serie("base_monetaria")},
-                                  "Base monetaria", "millones ARS"),
-                            use_container_width=True)
-        elif ind == "empleo":
-            st.plotly_chart(barras(serie("desempleo").tail(24),
-                                   "Tasa de desocupación (EPH)", "%"),
-                            use_container_width=True)
-
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            usar_barras = es_pct and len(plot_series) == 1
+            if usar_barras:
+                st.plotly_chart(barras(list(plot_series.values())[0].tail(60),
+                                       titulo, ytitulo, rango=True),
+                                use_container_width=True)
+            else:
+                st.plotly_chart(linea(plot_series, titulo, ytitulo, log=log_efectivo),
+                                use_container_width=True)
+        with c2:
+            principal = list(plot_series.values())[0]
+            es_tasa = cat.set_index("series_id").loc[elegidas[0], "kind"] == "rate"
+            panel_insights(ins.insights_serie(principal, es_tasa=es_tasa,
+                                              nombre=nombres.get(elegidas[0], "")))
     with tab:
-        sid = st.selectbox("Serie", series_ind.series_id.tolist(),
-                           format_func=lambda x: cat.set_index("series_id").loc[x, "name"])
-        tabla(serie(sid), cat.set_index("series_id").loc[sid, "name"])
+        sid = st.selectbox("Serie", elegidas, format_func=lambda x: nombres.get(x, x))
+        s2, _ = _aplicar_filtros(serie(sid), transform, mm, False, desde)
+        tabla(s2, f"{nombres.get(sid, sid)} — {transform}")
 
 
+# ---------------------------------------------------------------------------
+# Página: Econometría
+# ---------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def _econometria(anio: str):
     df = data.get_frame(["ipc_general", "usd_oficial"], freq="M", how="last",
@@ -231,18 +374,23 @@ def pagina_econometria():
         st.subheader("Pass-through cambiario")
         acum = pt.acumulado
         fig = go.Figure(go.Scatter(x=list(acum.index), y=acum.values * 100,
-                                   mode="lines+markers", line=dict(color=COLOR["primario"], width=3)))
-        fig.update_layout(height=340, xaxis_title="meses tras la devaluación",
-                          yaxis_title="% trasladado a precios", margin=dict(t=20))
+                                   mode="lines+markers",
+                                   line=dict(color=COLOR["primario"], width=3),
+                                   fill="tozeroy", fillcolor="rgba(31,78,121,0.08)"))
+        _estilo(fig, height=340, leyenda=False)
+        fig.update_layout(xaxis_title="meses tras la devaluación",
+                          yaxis_title="% trasladado a precios")
         st.plotly_chart(fig, use_container_width=True)
         st.metric("Traslado acumulado a 6 meses", f"{pt.acumulado.iloc[-1]*100:.0f}%",
                   help=f"R²={pt.r2}, n={pt.n}")
     with c2:
         st.subheader("Impulso-respuesta (VAR)")
-        fig = go.Figure(go.Scatter(x=list(irf.index), y=irf["acumulada"],
-                                   mode="lines", line=dict(color=COLOR["acento"], width=3)))
-        fig.update_layout(height=340, xaxis_title="meses",
-                          yaxis_title="respuesta acum. inflación (pp)", margin=dict(t=20))
+        fig = go.Figure(go.Scatter(x=list(irf.index), y=irf["acumulada"], mode="lines",
+                                   line=dict(color=COLOR["acento"], width=3),
+                                   fill="tozeroy", fillcolor="rgba(230,126,34,0.08)"))
+        _estilo(fig, height=340, leyenda=False)
+        fig.update_layout(xaxis_title="meses",
+                          yaxis_title="respuesta acum. inflación (pp)")
         st.plotly_chart(fig, use_container_width=True)
         st.caption(f"{var}")
 
@@ -252,14 +400,14 @@ def pagina_econometria():
         st.subheader("Curva de Phillips")
         signif = "significativa" if ph.p_valor < 0.05 else "NO significativa"
         st.metric("Pendiente β (desempleo→inflación)", f"{ph.beta_desempleo:+.2f}",
-                  f"p={ph.p_valor} ({signif})")
+                  f"p={ph.p_valor} ({signif})", delta_color="off")
         st.caption(f"Forma {ph.forma} · R²={ph.r2} · n={ph.n}. En Argentina la relación "
                    "suele ser plana: la inflación la manejan lo monetario/cambiario.")
     with c4:
         st.subheader("Nowcasting de inflación (ML)")
         cc1, cc2 = st.columns(2)
         cc1.metric("Nowcast mes en curso", f"{nc_now:.2f}%",
-                   f"últ. oficial {infl_real:.2f}%")
+                   f"últ. oficial {infl_real:.2f}%", delta_color="off")
         cc2.metric("Error vs. benchmark", f"−{nc.mejora_pct:.0f}%",
                    help=f"RMSE {nc.rmse_modelo} vs naive {nc.rmse_naive} ({nc.n_test} meses)")
         st.caption("ElasticNet con variables de alta frecuencia, validación walk-forward. "
@@ -271,13 +419,13 @@ def pagina_econometria():
 # ---------------------------------------------------------------------------
 st.sidebar.title("📊 Plataforma Económica")
 st.sidebar.caption("Monitoreo · Análisis · Econometría")
-pagina = st.sidebar.radio("Ir a", ["Cockpit", "Detalle por indicador", "Econometría"])
+pagina = st.sidebar.radio("Ir a", ["Cockpit", "Explorador", "Econometría"])
 st.sidebar.divider()
 st.sidebar.caption("Fuentes: BCRA · INDEC/datos.gob.ar · argentinadatos")
 
 if pagina == "Cockpit":
     pagina_cockpit()
-elif pagina == "Detalle por indicador":
-    pagina_detalle()
+elif pagina == "Explorador":
+    pagina_explorador()
 else:
     pagina_econometria()
