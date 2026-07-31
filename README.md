@@ -47,7 +47,14 @@ python3 scripts/init_db.py               # crea la base y siembra el catálogo
 python3 scripts/ingest.py                # descarga el histórico de las 13 series
 python3 scripts/analisis.py              # reporte econométrico en consola
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
+python3 -m pytest                        # suite de tests (30 casos, ~20s)
 ```
+
+### Tests
+`tests/` cubre los cuatro módulos de `platec/`: `stats` (transformaciones puras),
+`econometria` y `nowcast` (validados contra series sintéticas de propiedades conocidas
+y contra la base real), y `data` (acceso e alineación de frecuencias). Los tests de
+integración se saltan solos si `data/plataforma.db` no existe.
 
 ### Deploy (Streamlit Community Cloud)
 1. En [share.streamlit.io](https://share.streamlit.io) conectar este repo.

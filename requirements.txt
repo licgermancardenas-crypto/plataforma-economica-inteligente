@@ -19,3 +19,6 @@ scikit-learn>=1.5        # ElasticNet para nowcasting de inflación
 
 # --- IA (etapa 8) ---
 # cliente del proveedor de LLM que se elija
+
+# --- Tests ---
+pytest>=8.0
