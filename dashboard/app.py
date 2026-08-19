@@ -12,6 +12,7 @@ Deploy:           Streamlit Community Cloud (apunta a este archivo).
 """
 from __future__ import annotations
 
+import inspect
 import sys
 import warnings
 from pathlib import Path
@@ -80,6 +81,14 @@ PALETA = [COLOR["primario"], COLOR["acento"], COLOR["teal"],
           COLOR["violeta"], COLOR["ambar"], COLOR["verde"]]
 TONO_COLOR = {"alza": "#d64545", "baja": "#1e9e5a", "alerta": "#e0a800", "neutro": "#8895a7"}
 TONO_ICONO = {"alza": "🔺", "baja": "🔻", "alerta": "⚠️", "neutro": "•"}
+
+# `use_container_width` quedó deprecado en Streamlit 1.49 a favor de `width`, y su
+# fecha de remoción ya pasó (31/12/2025): el día que lo saquen, cada gráfico del
+# dashboard tira TypeError. El deploy corre siempre la última versión y el entorno
+# local puede ir atrás, así que se elige el kwarg que soporte la versión instalada.
+ANCHO = ({"width": "stretch"}
+         if "width" in inspect.signature(st.plotly_chart).parameters
+         else {"use_container_width": True})
 
 _CSS = """
 <style>
@@ -262,7 +271,7 @@ def kpi_card(col, icono: str, color: str, label: str, valor: str,
                 f'<div class="kpi-value">{valor}</div>'
                 f'{_pill(delta_num, delta_txt, malo)}</div></div>',
                 unsafe_allow_html=True)
-            st.plotly_chart(sparkline(spark, color), use_container_width=True,
+            st.plotly_chart(sparkline(spark, color), **ANCHO,
                             config={"displayModeBar": False})
             st.caption(sub)
 
@@ -284,7 +293,7 @@ def tabla(s: pd.Series, nombre: str):
     df = s.rename(nombre).reset_index()
     df.columns = ["Fecha", nombre]
     df["Fecha"] = pd.to_datetime(df["Fecha"]).dt.date
-    st.dataframe(df.iloc[::-1], use_container_width=True, height=360, hide_index=True)
+    st.dataframe(df.iloc[::-1], **ANCHO, height=360, hide_index=True)
     st.download_button("⬇ Descargar CSV", df.to_csv(index=False).encode("utf-8"),
                        file_name=f"{nombre}.csv", mime="text/csv")
 
@@ -338,16 +347,16 @@ def pagina_cockpit():
     with c1:
         with st.container(border=True):
             st.plotly_chart(linea({"Brecha CCL vs oficial %": br}, "Brecha cambiaria", "%",
-                                  area=True), use_container_width=True)
+                                  area=True), **ANCHO)
     with c2:
         with st.container(border=True):
             st.plotly_chart(gauge(float(br.iloc[-1]), "Brecha actual", [0, 120],
-                                  COLOR["acento"]), use_container_width=True)
+                                  COLOR["acento"]), **ANCHO)
         with st.container(border=True):
             infl_m = stats.var_intermensual(ipc).dropna()
             st.plotly_chart(gauge(ins.posicion_historica(infl_m),
                                   "Inflación mensual · percentil histórico",
-                                  [0, 100], COLOR["primario"]), use_container_width=True)
+                                  [0, 100], COLOR["primario"]), **ANCHO)
 
     seccion("Lectura de la coyuntura")
     ci1, ci2 = st.columns(2)
@@ -437,10 +446,10 @@ def pagina_explorador():
                 if es_pct and len(plot_series) == 1:
                     st.plotly_chart(barras(list(plot_series.values())[0].tail(60),
                                            titulo, ytitulo, rango=True),
-                                    use_container_width=True)
+                                    **ANCHO)
                 else:
                     st.plotly_chart(linea(plot_series, titulo, ytitulo, log=log_efectivo),
-                                    use_container_width=True)
+                                    **ANCHO)
         with c2:
             with st.container(border=True):
                 principal = list(plot_series.values())[0]
@@ -499,7 +508,7 @@ def pagina_econometria():
             _estilo(fig, height=320, leyenda=False)
             fig.update_layout(xaxis_title="meses tras la devaluación",
                               yaxis_title="% trasladado a precios")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, **ANCHO)
             st.metric("Traslado acumulado a 6 meses", f"{pt.acumulado.iloc[-1]*100:.0f}%",
                       help=f"R²={pt.r2}, n={pt.n}")
     with c2:
@@ -511,7 +520,7 @@ def pagina_econometria():
             _estilo(fig, height=320, leyenda=False)
             fig.update_layout(xaxis_title="meses",
                               yaxis_title="respuesta acum. inflación (pp)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, **ANCHO)
             st.caption(f"{var}")
 
     st.divider()
@@ -547,7 +556,7 @@ pagina = st.sidebar.radio("Navegación", ["🏠  Cockpit", "🔎  Explorador", "
                           label_visibility="collapsed")
 st.sidebar.divider()
 st.sidebar.caption(f"📅 Datos hasta {_fecha_datos()}")
-if st.sidebar.button("🔄 Actualizar desde las APIs", use_container_width=True):
+if st.sidebar.button("🔄 Actualizar desde las APIs", **ANCHO):
     with st.spinner("Consultando BCRA, INDEC y argentinadatos..."):
         ok, msg = bootstrap.actualizar()
     st.cache_data.clear()
