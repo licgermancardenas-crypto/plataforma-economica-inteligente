@@ -11,3 +11,8 @@ headless = true
 
 [browser]
 gatherUsageStats = false
+
+# TEMPORAL (diagnóstico): mostrar el traceback completo en el navegador en vez
+# del mensaje redactado de Streamlit Cloud. Revertir una vez identificado el fallo.
+[client]
+showErrorDetails = "full"
