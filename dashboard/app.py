@@ -23,6 +23,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+import bootstrap
 from bootstrap import ensure_data
 
 warnings.filterwarnings("ignore")
@@ -43,9 +44,9 @@ def _boot():
 
 _boot()
 from platec import data, stats  # noqa: E402  (import tras asegurar la DB)
-from platec import econometria as ec  # noqa: E402
 from platec import insights as ins  # noqa: E402
-from platec import nowcast  # noqa: E402
+# `econometria` (statsmodels) y `nowcast` (scikit-learn) se importan dentro de la
+# página que los usa: son ~2 s de import y el cockpit no los necesita.
 
 
 @st.cache_data(ttl=3600)
@@ -61,6 +62,12 @@ def resumen(sid: str) -> dict:
 @st.cache_data(ttl=3600)
 def catalogo() -> pd.DataFrame:
     return data.catalogo()
+
+
+def _fecha_datos() -> str:
+    """Última observación efectivamente cargada (no la fecha de hoy)."""
+    f = bootstrap.estado_datos()["ultima_obs"]
+    return pd.Timestamp(f).strftime("%d/%m/%Y") if f else "—"
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +297,10 @@ def seccion(titulo: str):
 # Página: Cockpit
 # ---------------------------------------------------------------------------
 def pagina_cockpit():
-    hoy = pd.Timestamp.today().strftime("%d/%m/%Y")
     st.markdown(
         f'<div class="hero"><h1>Coyuntura económica argentina</h1>'
-        f'<p>Seguimiento monetario-cambiario · datos al {hoy}</p></div>',
+        f'<p>Seguimiento monetario-cambiario · última observación: '
+        f'{_fecha_datos()}</p></div>',
         unsafe_allow_html=True)
 
     seccion("Indicadores núcleo")
@@ -449,8 +456,11 @@ def pagina_explorador():
 # ---------------------------------------------------------------------------
 # Página: Econometría
 # ---------------------------------------------------------------------------
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner="Estimando modelos (VAR, pass-through, nowcast)...")
 def _econometria(anio: str):
+    from platec import econometria as ec   # statsmodels: import caro, solo acá
+    from platec import nowcast             # scikit-learn: idem
+
     df = data.get_frame(["ipc_general", "usd_oficial"], freq="M", how="last",
                         start=f"{anio}-01-01")
     ipc, tc = df["ipc_general"].dropna(), df["usd_oficial"].dropna()
@@ -536,6 +546,12 @@ st.sidebar.divider()
 pagina = st.sidebar.radio("Navegación", ["🏠  Cockpit", "🔎  Explorador", "🧮  Econometría"],
                           label_visibility="collapsed")
 st.sidebar.divider()
+st.sidebar.caption(f"📅 Datos hasta {_fecha_datos()}")
+if st.sidebar.button("🔄 Actualizar desde las APIs", use_container_width=True):
+    with st.spinner("Consultando BCRA, INDEC y argentinadatos..."):
+        ok, msg = bootstrap.actualizar()
+    st.cache_data.clear()
+    (st.sidebar.success if ok else st.sidebar.warning)(msg)
 st.sidebar.caption("Fuentes: BCRA · INDEC/datos.gob.ar · argentinadatos")
 
 if "Cockpit" in pagina:

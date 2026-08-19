@@ -75,6 +75,14 @@ validado **walk-forward** (ventana expansiva, 64 meses fuera de muestra):
 
 > TAMAR se excluyó del nowcast: solo existe desde oct-2024 y truncaría el entrenamiento.
 
+**Selección de la regularización.** (α, l1_ratio) se eligen con `TimeSeriesSplit` y no con
+KFold: con folds contiguos el criterio de selección mira meses posteriores al bloque de
+validación, justo la información que no está disponible al nowcastear. Dentro del
+walk-forward la búsqueda se repite una vez por año de test y entremedio solo se reestiman
+los coeficientes con la muestra ampliada — la penalidad óptima es estable mes a mes y
+reelegirla en cada paso multiplicaba por 15 el tiempo de cómputo (15,7 s → 1,0 s) sin
+mover el resultado (RMSE 1.68 vs. naive 2.42, +31%).
+
 ---
 
 ## Limitaciones y próximos refinamientos

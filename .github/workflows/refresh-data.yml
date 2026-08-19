@@ -1,0 +1,42 @@
+# Refresca el snapshot de datos que consume el deploy.
+# El dashboard no le pega a las APIs al arrancar: lee data/snapshot.csv.gz. Este
+# job lo regenera y lo commitea, así el deploy queda al día sin costo de arranque.
+# Nota: si BCRA bloquea la IP del runner (ocurre desde fuera de Argentina), la
+# ingesta deja esas series sin actualizar y `snapshot.py export` aborta antes de
+# congelar una base incompleta; en ese caso, regenerarlo localmente:
+# `python3 scripts/ingest.py && python3 scripts/snapshot.py export`.
+name: Refrescar snapshot de datos
+
+on:
+  schedule:
+    - cron: "0 12 * * *"     # 09:00 ART, después de la actualización de las fuentes
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refrescar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install requests
+      - name: Reconstruir la base desde el snapshot y actualizar contra las APIs
+        run: |
+          python3 scripts/snapshot.py load
+          python3 scripts/ingest.py
+      - name: Congelar snapshot (aborta si alguna serie quedó vacía)
+        run: python3 scripts/snapshot.py export
+      - name: Commitear si hay datos nuevos
+        run: |
+          if git diff --quiet -- data/snapshot.csv.gz data/snapshot_meta.json; then
+            echo "sin datos nuevos"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/snapshot.csv.gz data/snapshot_meta.json
+          git commit -m "Datos: snapshot al $(python3 -c "import json;print(json.load(open('data/snapshot_meta.json'))['ultima_obs'])")"
+          git push

@@ -1,6 +1,10 @@
 # --- Datos generados (reproducibles con init_db.py + ingest.py) ---
 data/*.db
 data/raw/
+# El snapshot SÍ se versiona: es lo que permite que el deploy arranque en ~1 s
+# sin depender de las APIs (ver scripts/snapshot.py).
+!data/snapshot.csv.gz
+!data/snapshot_meta.json
 
 # --- Python ---
 __pycache__/

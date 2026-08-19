@@ -23,8 +23,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import ElasticNetCV
+from sklearn.linear_model import ElasticNet, ElasticNetCV
 from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import TimeSeriesSplit
 
 from . import data
 
@@ -71,6 +72,25 @@ class ResultadoNowcast:
 
 FEATURES = ["deval_of", "deval_ccl", "brecha", "infl_l1", "infl_l2"]
 
+# Validación cruzada para elegir (alpha, l1_ratio). TimeSeriesSplit y no KFold:
+# con folds aleatorios/contiguos el criterio de selección mira meses POSTERIORES
+# al bloque de validación, que es exactamente la información que no se tiene al
+# nowcastear. Con ventanas expansivas, cada fold valida solo hacia adelante.
+_CV = TimeSeriesSplit(n_splits=3)
+_L1_GRID = [.2, .5, .8]
+# Cada cuántos meses se vuelve a elegir la regularización dentro del walk-forward.
+# Reelegirla en CADA paso cuesta ~65 búsquedas CV (segundos de espera en el
+# dashboard) y mueve poco el resultado: la penalidad óptima es estable de un mes
+# al siguiente. Se reelige una vez por año de test y entremedio solo se reestiman
+# los coeficientes con la muestra ampliada.
+_REAJUSTE_CADA = 12
+
+
+def _buscar_hiperparametros(X, y) -> tuple[float, float]:
+    m = ElasticNetCV(cv=_CV, l1_ratio=_L1_GRID, max_iter=10000)
+    m.fit(X, y)
+    return float(m.alpha_), float(m.l1_ratio_)
+
 
 def evaluar_walk_forward(df: pd.DataFrame, min_train: int = 36) -> ResultadoNowcast:
     """
@@ -82,8 +102,11 @@ def evaluar_walk_forward(df: pd.DataFrame, min_train: int = 36) -> ResultadoNowc
     X = df[FEATURES].values
     preds, reales, naive = [], [], []
     modelo = None
-    for t in range(min_train, len(df)):
-        modelo = ElasticNetCV(cv=5, max_iter=10000, l1_ratio=[.2, .5, .8])
+    alpha = l1 = None
+    for i, t in enumerate(range(min_train, len(df))):
+        if i % _REAJUSTE_CADA == 0:            # solo con datos < t: sin mirar el futuro
+            alpha, l1 = _buscar_hiperparametros(X[:t], y[:t])
+        modelo = ElasticNet(alpha=alpha, l1_ratio=l1, max_iter=10000)
         modelo.fit(X[:t], y[:t])
         preds.append(modelo.predict(X[t:t + 1])[0])
         reales.append(y[t])
@@ -99,6 +122,8 @@ def evaluar_walk_forward(df: pd.DataFrame, min_train: int = 36) -> ResultadoNowc
 
 def nowcast_actual(df: pd.DataFrame) -> float:
     """Estima la inflación del último mes disponible entrenando con todo el histórico previo."""
-    modelo = ElasticNetCV(cv=5, max_iter=10000, l1_ratio=[.2, .5, .8])
-    modelo.fit(df[FEATURES].values[:-1], df["infl"].values[:-1])
-    return float(modelo.predict(df[FEATURES].values[-1:])[0])
+    X, y = df[FEATURES].values, df["infl"].values
+    alpha, l1 = _buscar_hiperparametros(X[:-1], y[:-1])
+    modelo = ElasticNet(alpha=alpha, l1_ratio=l1, max_iter=10000)
+    modelo.fit(X[:-1], y[:-1])
+    return float(modelo.predict(X[-1:])[0])
