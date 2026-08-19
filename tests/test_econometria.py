@@ -106,6 +106,62 @@ def test_estimar_var_estable_y_irf(idx):
     assert irf["acumulada"].iloc[-1] > irf["acumulada"].iloc[0]
 
 
+# --- Diagnóstico (pre-testing en tabla) ---
+def test_diagnostico_clasifica_orden_de_integracion(idx):
+    rng = np.random.default_rng(SEED + 7)
+    df = pd.DataFrame({
+        "i0": rng.standard_normal(len(idx)),                 # ruido blanco -> I(0)
+        "i1": np.cumsum(rng.standard_normal(len(idx))),      # random walk  -> I(1)
+    }, index=idx)
+    tabla = ec.diagnostico(df)
+    assert list(tabla.index) == ["i0", "i1"]
+    assert {"ADF p", "KPSS p", "veredicto", "orden I(d)", "n"} <= set(tabla.columns)
+    assert tabla.loc["i0", "orden I(d)"] == 0
+    assert tabla.loc["i1", "orden I(d)"] == 1
+
+
+# --- IRF acumulada por bootstrap ---
+@pytest.fixture
+def sistema_causal(idx):
+    """x = ruido; z responde a x rezagado. Orden [x, z] => shock en x pega en z."""
+    rng = np.random.default_rng(SEED + 8)
+    x = rng.standard_normal(len(idx))
+    z = np.empty(len(idx))
+    z[0] = 0.0
+    for t in range(1, len(idx)):
+        z[t] = 0.6 * x[t - 1] + 0.3 * z[t - 1] + 0.1 * rng.standard_normal()
+    return pd.DataFrame({"x": x, "z": z}, index=idx)
+
+
+def test_bootstrap_banda_tiene_ancho_no_nulo(sistema_causal):
+    # el motivo de existir de esta función: las bandas MC de statsmodels colapsan
+    # sobre el punto en esta versión. Acá el intervalo debe tener ancho real.
+    b = ec.irf_acumulada_bootstrap(sistema_causal, "x", "z", periodos=8,
+                                   repl=150, seed=1)
+    assert len(b.puntual) == len(b.inferior) == len(b.superior) == 9
+    assert (b.superior >= b.inferior).all()
+    ancho = (b.superior - b.inferior)
+    assert (ancho.iloc[1:] > 1e-6).all()          # ninguna banda colapsada
+    assert 0 < b.repl <= 150
+
+
+def test_bootstrap_detecta_respuesta_significativa(sistema_causal):
+    b = ec.irf_acumulada_bootstrap(sistema_causal, "x", "z", periodos=8,
+                                   repl=200, seed=2)
+    # x impulsa z con signo positivo: respuesta acumulada positiva y significativa
+    assert b.puntual.iloc[-1] > 0
+    assert len(b.significativa_en) > 0
+
+
+# --- Sensibilidad al orden de Cholesky ---
+def test_sensibilidad_orden_una_columna_por_ordenamiento(sistema_causal):
+    ordenes = [["x", "z"], ["z", "x"]]
+    out = ec.sensibilidad_orden(sistema_causal, "x", "z", ordenes, periodos=6)
+    assert list(out.columns) == ["x → z", "z → x"]
+    assert len(out) == 7                          # períodos 0..6
+    assert out.index.name == "horizonte"
+
+
 # --- Curva de Phillips ---
 def test_curva_phillips_estructura():
     idxq = pd.date_range("2005-01-01", periods=60, freq="QS")

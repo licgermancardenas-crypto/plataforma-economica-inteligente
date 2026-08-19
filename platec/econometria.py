@@ -229,3 +229,146 @@ def pass_through(tc: pd.Series, ipc: pd.Series, lags: int = 6) -> PassThrough:
     return PassThrough(coef_por_lag=betas.round(3),
                        acumulado=betas.cumsum().round(3),
                        r2=round(modelo.rsquared, 3), n=int(modelo.nobs))
+
+
+# ---------------------------------------------------------------------------
+# 8. Incertidumbre de la impulso-respuesta (bootstrap propio)
+# ---------------------------------------------------------------------------
+# Por qué no se usan las bandas de statsmodels: `VARResults.irf_resim` (motor de
+# `errband_mc`/`cum_errband_mc`) devuelve en esta versión (0.14.6 + numpy 2.x)
+# las N réplicas IDÉNTICAS entre sí —desvío entre réplicas ~1e-15—, así que las
+# bandas colapsan sobre el estimador puntual. Un intervalo de ancho cero no es un
+# error visible: es un gráfico que miente con cara de rigor. Se implementa acá el
+# bootstrap de residuos estándar (Runkle 1987; Lütkepohl 2005, cap. 3.7).
+@dataclass
+class IRFBandas:
+    puntual: pd.Series        # respuesta acumulada por horizonte (pp)
+    inferior: pd.Series
+    superior: pd.Series
+    orden: list               # orden de Cholesky usado (más exógena primero)
+    p: int                    # rezagos del VAR
+    repl: int
+    signif: float
+    n: int
+
+    @property
+    def significativa_en(self) -> list:
+        """Horizontes donde el intervalo no contiene al cero."""
+        return [h for h in self.puntual.index
+                if not (self.inferior[h] <= 0 <= self.superior[h])]
+
+    def __str__(self):
+        h = self.puntual.index[-1]
+        return (f"IRF acumulada h={h}: {self.puntual[h]:.2f} pp "
+                f"[{self.inferior[h]:.2f}, {self.superior[h]:.2f}] "
+                f"({int((1-self.signif)*100)}%, {self.repl} réplicas)")
+
+
+def _irf_acum_ortogonal(datos: np.ndarray, p: int, i: int, j: int,
+                        periodos: int) -> np.ndarray:
+    """IRF ortogonalizada acumulada de j ante shock en i, estimando un VAR(p) por OLS."""
+    res = VAR(datos).fit(p)
+    an = res.irf(periodos)
+    return an.orth_cum_effects[:, j, i]
+
+
+def irf_acumulada_bootstrap(v: pd.DataFrame, shock: str, respuesta: str,
+                            periodos: int = 12, repl: int = 600,
+                            signif: float = 0.05, seed: int = 7,
+                            maxlags: int = 6) -> IRFBandas:
+    """
+    Respuesta acumulada de `respuesta` ante un shock de 1 d.e. en `shock`, con
+    intervalo por bootstrap de residuos.
+
+    Procedimiento: se estima el VAR(p) (p por AIC) sobre la muestra real; en cada
+    réplica se remuestrean con reemplazo los residuos, se resimula el sistema
+    partiendo de las primeras p observaciones reales, se REESTIMA el VAR con el
+    mismo p y se recalcula la IRF. El intervalo son los percentiles signif/2 y
+    1-signif/2 de las réplicas.
+
+    El orden de las columnas de `v` define la identificación de Cholesky: la
+    primera variable es la más exógena contemporáneamente. Esa elección no es
+    inocua — ver `sensibilidad_orden`.
+
+    Advertencia metodológica: es un intervalo percentil simple, sin la corrección
+    de sesgo de Kilian (1998). En muestras cortas y con raíces cercanas a la
+    unidad tiende a subcubrir; leerlo como orden de magnitud de la incertidumbre,
+    no como un intervalo exacto.
+    """
+    d = v.dropna()
+    nombres = list(d.columns)
+    i, j = nombres.index(shock), nombres.index(respuesta)
+    datos = d.to_numpy()
+
+    base = VAR(datos).fit(maxlags=maxlags, ic="aic")
+    p = max(base.k_ar, 1)
+    puntual = _irf_acum_ortogonal(datos, p, i, j, periodos)
+
+    intercepto = base.params[0]
+    coefs = base.coefs                      # (p, k, k)
+    resid = base.resid                      # (T-p, k)
+    T, k = datos.shape
+    rng = np.random.default_rng(seed)
+
+    simuladas = np.empty((repl, periodos + 1))
+    fallidas = 0
+    for b in range(repl):
+        u = resid[rng.integers(0, len(resid), size=len(resid))]
+        sim = np.empty((T, k))
+        sim[:p] = datos[:p]                 # arranque con las p reales
+        for t in range(p, T):
+            x = intercepto.copy()
+            for l in range(p):
+                x = x + coefs[l] @ sim[t - 1 - l]
+            sim[t] = x + u[t - p]
+        try:
+            simuladas[b] = _irf_acum_ortogonal(sim, p, i, j, periodos)
+        except (np.linalg.LinAlgError, ValueError):
+            simuladas[b] = np.nan           # réplica explosiva: se descarta
+            fallidas += 1
+
+    validas = simuladas[~np.isnan(simuladas).any(axis=1)]
+    lo = np.percentile(validas, 100 * signif / 2, axis=0)
+    hi = np.percentile(validas, 100 * (1 - signif / 2), axis=0)
+    idx = pd.RangeIndex(periodos + 1, name="horizonte")
+    return IRFBandas(
+        puntual=pd.Series(puntual, index=idx), inferior=pd.Series(lo, index=idx),
+        superior=pd.Series(hi, index=idx), orden=nombres, p=p,
+        repl=len(validas), signif=signif, n=len(d))
+
+
+def sensibilidad_orden(v: pd.DataFrame, shock: str, respuesta: str,
+                       ordenes: list, periodos: int = 12,
+                       maxlags: int = 6) -> pd.DataFrame:
+    """
+    La misma IRF acumulada bajo distintos ordenamientos de Cholesky.
+
+    La descomposición de Cholesky impone una cadena causal contemporánea que los
+    datos NO identifican: es un supuesto del analista. Si la respuesta cambia
+    mucho al reordenar, la conclusión depende del supuesto y no de la evidencia.
+    Devuelve un DataFrame con una columna por ordenamiento (etiquetada con el
+    orden usado) indexado por horizonte.
+    """
+    out = {}
+    for orden in ordenes:
+        d = v[list(orden)].dropna()
+        i, j = list(orden).index(shock), list(orden).index(respuesta)
+        base = VAR(d.to_numpy()).fit(maxlags=maxlags, ic="aic")
+        out[" → ".join(orden)] = _irf_acum_ortogonal(
+            d.to_numpy(), max(base.k_ar, 1), i, j, periodos)
+    return pd.DataFrame(out, index=pd.RangeIndex(periodos + 1, name="horizonte"))
+
+
+def diagnostico(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Tabla de pre-testing por serie: ADF, KPSS, veredicto y orden de integración.
+    Es lo que justifica (o no) estimar el VAR en diferencias; hasta ahora vivía
+    solo en el reporte de consola.
+    """
+    filas = []
+    for col in df.columns:
+        r = test_estacionariedad(df[col].dropna())
+        filas.append({"serie": col, "ADF p": round(r.adf_p, 3),
+                      "KPSS p": round(r.kpss_p, 3), "veredicto": r.veredicto,
+                      "orden I(d)": orden_integracion(df[col]), "n": r.n})
+    return pd.DataFrame(filas).set_index("serie")

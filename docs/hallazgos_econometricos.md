@@ -48,13 +48,32 @@ Un pass-through de ~0.5 a 6 meses es consistente con la literatura para Argentin
 número que la plataforma podrá responder ante "si el dólar sube 10%, ¿cuánta inflación agrega?"
 (≈5 pp acumulados en medio año, con este modelo).
 
-## 5. VAR e impulso-respuesta (devaluación → inflación)
+## 5. VAR de la cadena monetaria (dinero → dólar → precios → actividad)
 
-VAR(4) estable sobre `[devaluación, inflación]` mensual. La **función impulso-respuesta
-ortogonalizada** (Cholesky, devaluación primero) muestra la respuesta acumulada de la
-inflación a un shock de 1σ en la devaluación: **~2 pp al mes 1, ~4 pp al mes 6, ~4.9 pp
-al año**. Confirma la transmisión *front-loaded* que ya mostraba el pass-through, ahora
-en un marco dinámico multivariado.
+VAR estimado sobre la cadena `[base monetaria, TC mayorista, IPC, EMAE]` en log-diferencias
+mensuales (variaciones %). Se usa el **mayorista**, no el oficial: es el que enfrentan los
+importadores, por donde entra el traslado a costos. Johansen da **rango 0** sobre los niveles
+(§3), así que el VAR en diferencias es la especificación correcta y no corresponde un VECM.
+
+La **respuesta acumulada del IPC a un shock de 1 d.e. en el TC** es *front-loaded* y consistente
+con el pass-through: **~5 pp al año**. Pero el intervalo es ancho — a 12 meses ronda
+**[0.3, 9.3] pp (95%)**: con ~110 observaciones mensuales el dato alcanza para afirmar que el
+traslado existe y es rápido, no una magnitud precisa. La regresión de rezagos distribuidos (§4)
+da un número más cerrado sólo porque impone que el dólar es exógeno; el VAR no necesita ese
+supuesto y paga esa honestidad con incertidumbre visible.
+
+**Las bandas se calculan con bootstrap de residuos propio** (Runkle 1987; Lütkepohl 2005, §3.7),
+no con las bandas Monte Carlo de statsmodels: en esta versión (0.14.6 + numpy 2.x) `irf_resim`
+devuelve las réplicas idénticas entre sí (desvío ~1e-15) y el intervalo colapsa sobre el punto
+—un intervalo de ancho cero que miente con cara de rigor—. Es un intervalo percentil simple, sin
+la corrección de sesgo de Kilian (1998): en muestras cortas tiende a subcubrir, leerlo como orden
+de magnitud.
+
+**Sensibilidad al orden de Cholesky.** La identificación impone una cadena causal contemporánea
+que los datos no identifican. Bajo los tres ordenamientos probados la magnitud es robusta aquí
+(~5.0 a ~5.2 pp al horizonte final), pero el signo puede darse vuelta si se supone que los precios
+se mueven antes que el dólar. El orden del relato (dinero → dólar → precios → actividad) es un
+supuesto económico, no un hallazgo.
 
 ## 6. Curva de Phillips (trimestral)
 

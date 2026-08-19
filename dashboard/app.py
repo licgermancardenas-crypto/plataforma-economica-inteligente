@@ -465,6 +465,14 @@ def pagina_explorador():
 # ---------------------------------------------------------------------------
 # Página: Econometría
 # ---------------------------------------------------------------------------
+# Cadena del relato: expansión monetaria → presión cambiaria → precios → actividad.
+# tc_mayorista y no usd_oficial: el mayorista es el que enfrentan los importadores,
+# que es por donde entra el traslado a costos.
+CADENA = ["base_monetaria", "tc_mayorista", "ipc_general", "emae_desest"]
+ETIQUETA = {"base": "Base monetaria", "tc": "TC mayorista",
+            "ipc": "IPC", "emae": "EMAE (desest.)"}
+
+
 @st.cache_data(ttl=3600, show_spinner="Estimando modelos (VAR, pass-through, nowcast)...")
 def _econometria(anio: str):
     from platec import econometria as ec   # statsmodels: import caro, solo acá
@@ -474,16 +482,41 @@ def _econometria(anio: str):
                         start=f"{anio}-01-01")
     ipc, tc = df["ipc_general"].dropna(), df["usd_oficial"].dropna()
     pt = ec.pass_through(tc, ipc, lags=6)
-    v = pd.DataFrame({"deval": np.log(tc).diff() * 100,
-                      "infl": np.log(ipc).diff() * 100}).dropna()
-    var = ec.estimar_var(v, maxlags=8)
-    irf = ec.irf(var, "deval", "infl", periodos=12)
     infl_q = ipc.resample("QS").last().pct_change() * 100
     ph = ec.curva_phillips(infl_q, data.get_series("desempleo"), aumentada=True)
     d = nowcast.construir_features(start=f"{anio}-01-01")
     nc = nowcast.evaluar_walk_forward(d, min_train=48)
     nc_now = nowcast.nowcast_actual(d)
-    return pt, irf, var, ph, nc, nc_now, float(d["infl"].iloc[-1])
+    return pt, ph, nc, nc_now, float(d["infl"].iloc[-1])
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el VAR de la cadena y sus bandas (bootstrap)...")
+def _cadena(anio: str):
+    """VAR de 4 variables + pre-testing + bandas bootstrap + sensibilidad al orden."""
+    from platec import econometria as ec
+
+    df = data.get_frame(CADENA, freq="M", how="last", start=f"{anio}-01-01")
+    niveles = pd.DataFrame({k: np.log(df[c]) for k, c in
+                            zip(ETIQUETA, CADENA)}).dropna()
+    v = niveles.diff().mul(100).dropna()          # variaciones % mensuales (log-dif)
+
+    diag_niv = ec.diagnostico(niveles)
+    diag_dif = ec.diagnostico(v)
+    joh = ec.cointegracion_johansen(niveles)
+    var = ec.estimar_var(v, maxlags=6)
+    banda = ec.irf_acumulada_bootstrap(v, "tc", "ipc", periodos=12, repl=500)
+    ordenes = ec.sensibilidad_orden(v, "tc", "ipc", [
+        ["base", "tc", "ipc", "emae"],    # el supuesto del relato
+        ["base", "ipc", "tc", "emae"],    # precios antes que el TC
+        ["emae", "base", "tc", "ipc"],    # actividad primero
+    ])
+    granger = pd.DataFrame([
+        {"relación": f"{ETIQUETA[a]} → {ETIQUETA[b]}",
+         "p mínimo": float(g.p_valor.min()), "en rezago": int(g.p_valor.idxmin())}
+        for a, b in [("base", "tc"), ("tc", "ipc"), ("base", "ipc"), ("tc", "emae")]
+        for g in [ec.granger(v[a], v[b], maxlag=6, diferenciar=False)]
+    ]).set_index("relación")
+    return diag_niv, diag_dif, joh, var, banda, ordenes, granger
 
 
 def pagina_econometria():
@@ -493,8 +526,98 @@ def pagina_econometria():
         'detalle en docs/hallazgos_econometricos.md</p></div>', unsafe_allow_html=True)
     anio = st.select_slider("Inicio de la muestra", ["2017", "2018", "2019", "2020"],
                             value="2017")
-    pt, irf, var, ph, nc, nc_now, infl_real = _econometria(anio)
+    pt, ph, nc, nc_now, infl_real = _econometria(anio)
+    diag_niv, diag_dif, joh, var, banda, ordenes, granger = _cadena(anio)
 
+    seccion("Pre-testing: ¿está justificada esta especificación?")
+    with st.container(border=True):
+        st.caption("Nada de VAR sin verificar antes el orden de integración y la "
+                   "cointegración. Esto se corría por consola; ahora se publica junto "
+                   "al resultado que justifica.")
+        d1, d2 = st.columns(2)
+        with d1:
+            st.markdown("**Niveles (logs)**")
+            st.dataframe(diag_niv, **ANCHO)
+        with d2:
+            st.markdown("**Variaciones mensuales (log-dif)**")
+            st.dataframe(diag_dif, **ANCHO)
+        rango = joh["rango_cointegracion"]
+        if rango == 0:
+            st.success(f"**Johansen: rango {rango}** — sin relaciones de cointegración "
+                       "entre las cuatro series en niveles, así que el VAR en "
+                       "diferencias es la especificación correcta (un VECM sobraría).")
+        else:
+            st.warning(f"**Johansen: rango {rango}** — hay cointegración: el VAR en "
+                       "diferencias está mal especificado y corresponde un VECM. "
+                       "Leer las IRF de abajo con esa reserva.")
+        ambiguas = diag_dif.index[diag_dif["veredicto"] != "estacionaria (I(0))"].tolist()
+        if ambiguas:
+            st.warning("Estacionariedad no concluyente en diferencias para: "
+                       f"**{', '.join(ETIQUETA.get(a, a) for a in ambiguas)}**. "
+                       "En Argentina la inflación mensual es tan persistente que el ADF "
+                       "no logra rechazar la raíz unitaria; el VAR sigue siendo la mejor "
+                       "opción disponible, pero los errores estándar quedan optimistas.")
+
+    st.divider()
+    seccion("Cadena monetaria: shock cambiario → precios")
+    c0a, c0b = st.columns([3, 2])
+    with c0a:
+        with st.container(border=True):
+            st.subheader("Respuesta acumulada del IPC, con incertidumbre")
+            x = list(banda.puntual.index)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x + x[::-1],
+                                     y=list(banda.superior) + list(banda.inferior)[::-1],
+                                     fill="toself", fillcolor="rgba(239,108,87,0.16)",
+                                     line=dict(width=0), hoverinfo="skip",
+                                     name=f"IC {int((1-banda.signif)*100)}%"))
+            fig.add_trace(go.Scatter(x=x, y=list(banda.puntual), mode="lines",
+                                     line=dict(color=COLOR["acento"], width=3),
+                                     name="respuesta acumulada"))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses tras el shock",
+                              yaxis_title="respuesta acum. del IPC (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            h = banda.puntual.index[-1]
+            st.caption(
+                f"VAR({banda.p}) sobre {len(banda.orden)} variables, n={banda.n}. "
+                f"A {h} meses: **{banda.puntual[h]:.1f} pp** "
+                f"[{banda.inferior[h]:.1f}, {banda.superior[h]:.1f}]. "
+                f"Bootstrap de residuos, {banda.repl} réplicas — las bandas Monte Carlo "
+                "de statsmodels devuelven réplicas idénticas en esta versión y colapsan "
+                "sobre el punto, así que el intervalo se calcula acá.")
+    with c0b:
+        with st.container(border=True):
+            st.subheader("Sensibilidad al orden de Cholesky")
+            fig = go.Figure()
+            for i, col in enumerate(ordenes.columns):
+                etiqueta = " → ".join(ETIQUETA.get(t, t) for t in col.split(" → "))
+                fig.add_trace(go.Scatter(x=list(ordenes.index), y=ordenes[col],
+                                         mode="lines", name=etiqueta,
+                                         line=dict(width=2.4, color=PALETA[i % len(PALETA)])))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            rango_ord = ordenes.iloc[-1]
+            st.caption(
+                f"Al horizonte final la respuesta va de **{rango_ord.min():+.1f}** a "
+                f"**{rango_ord.max():+.1f} pp** según qué variable se suponga más "
+                "exógena. Cholesky impone una cadena contemporánea que los datos no "
+                "identifican: si se asume que los precios se mueven antes que el dólar, "
+                "el signo se da vuelta. El orden del relato (dinero → dólar → precios → "
+                "actividad) es un supuesto económico, no un hallazgo.")
+
+    with st.container(border=True):
+        st.markdown("**Causalidad de Granger en la cadena** (p-valor mínimo sobre 6 rezagos)")
+        g = granger.copy()
+        g["conclusión"] = np.where(g["p mínimo"] < 0.05, "✅ precede", "— no precede")
+        g["p mínimo"] = g["p mínimo"].round(4)
+        st.dataframe(g, **ANCHO)
+        st.caption("Granger es precedencia temporal, no causalidad estructural.")
+
+    st.divider()
     seccion("Traslado a precios")
     c1, c2 = st.columns(2)
     with c1:
@@ -513,15 +636,21 @@ def pagina_econometria():
                       help=f"R²={pt.r2}, n={pt.n}")
     with c2:
         with st.container(border=True):
-            st.subheader("Impulso-respuesta (VAR)")
-            fig = go.Figure(go.Scatter(x=list(irf.index), y=irf["acumulada"], mode="lines",
-                                       line=dict(color=COLOR["acento"], width=3),
-                                       fill="tozeroy", fillcolor="rgba(239,108,87,0.10)"))
-            _estilo(fig, height=320, leyenda=False)
-            fig.update_layout(xaxis_title="meses",
-                              yaxis_title="respuesta acum. inflación (pp)")
-            st.plotly_chart(fig, **ANCHO)
-            st.caption(f"{var}")
+            st.subheader("Lectura conjunta")
+            st.metric("Traslado a 6 meses (regresión de rezagos distribuidos)",
+                      f"{pt.acumulado.iloc[-1]*100:.0f}%", help=f"R²={pt.r2}, n={pt.n}")
+            h = banda.puntual.index[-1]
+            st.metric(f"Respuesta acumulada del IPC a {h} meses (VAR)",
+                      f"{banda.puntual[h]:.1f} pp",
+                      f"IC 95%: {banda.inferior[h]:.1f} a {banda.superior[h]:.1f}",
+                      delta_color="off")
+            st.caption(
+                f"{var}. Las dos rutas coinciden en que el traslado existe y es rápido "
+                "en los primeros meses, pero el intervalo del VAR es ancho: con ~110 "
+                "observaciones mensuales el dato no alcanza para afirmar una magnitud "
+                "precisa. La regresión de rezagos distribuidos da un número más "
+                "cerrado porque impone que el dólar es exógeno — supuesto que el VAR "
+                "no necesita hacer.")
 
     st.divider()
     seccion("Actividad y proyección")
