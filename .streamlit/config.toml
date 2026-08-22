@@ -1,9 +1,12 @@
-# Tema del dashboard — paleta sobria y accesible (validada contra daltonismo).
+# Tema del dashboard — oscuro glassmorphic (navy casi negro + azul eléctrico).
+# base="dark" hace que widgets, tablas y tabs de Streamlit rendericen oscuros
+# solos; el CSS de app.py refina tarjetas, KPIs, hero y sidebar como vidrio.
 [theme]
-primaryColor = "#1f4e79"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f6f8"
-textColor = "#1a1a1a"
+base = "dark"
+primaryColor = "#2b6bff"
+backgroundColor = "#0b1220"
+secondaryBackgroundColor = "#0e1526"
+textColor = "#e8edf6"
 font = "sans serif"
 
 [server]

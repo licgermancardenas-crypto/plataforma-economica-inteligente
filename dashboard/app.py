@@ -4,8 +4,9 @@ Plataforma Económica Inteligente — Dashboard (Streamlit).
 Cockpit de indicadores núcleo + explorador con filtros dinámicos e insights
 automáticos + panel de econometría. Se apoya en el núcleo analítico `platec`.
 
-Estética: SaaS moderno — fondo gris, tarjetas blancas redondeadas, KPI cards con
-ícono + pill de variación + sparkline, gauges, sidebar oscuro (solo CSS).
+Estética: SaaS oscuro glassmorphic — fondo navy con glow azul, tarjetas de vidrio
+(blur + borde sutil), acento azul eléctrico, KPI cards con ícono + pill de variación
++ sparkline, gauges y sidebar oscuro. Tema base en .streamlit/config.toml.
 
 Ejecutar local:   streamlit run dashboard/app.py
 Deploy:           Streamlit Community Cloud (apunta a este archivo).
@@ -79,13 +80,23 @@ def _fecha_datos() -> str:
 # ---------------------------------------------------------------------------
 # Paleta + estilo
 # ---------------------------------------------------------------------------
-COLOR = {"primario": "#1f4e79", "acento": "#ef6c57", "teal": "#17a2b8",
-         "verde": "#1e9e5a", "gris": "#8895a7", "rojo": "#d64545",
-         "violeta": "#7d5ba6", "ambar": "#e0a800"}
+# Paleta para tema oscuro: tonos brillantes que rinden sobre navy (#0b1220).
+# `primario` = azul eléctrico (acento de marca); `acento` = coral cálido de
+# contraste. Semántica alza/baja en rojo/verde legibles sobre fondo oscuro.
+COLOR = {"primario": "#2b6bff", "acento": "#fb7185", "teal": "#22d3ee",
+         "verde": "#34d399", "gris": "#94a3b8", "rojo": "#f87171",
+         "violeta": "#a78bfa", "ambar": "#fbbf24"}
 PALETA = [COLOR["primario"], COLOR["acento"], COLOR["teal"],
           COLOR["violeta"], COLOR["ambar"], COLOR["verde"]]
-TONO_COLOR = {"alza": "#d64545", "baja": "#1e9e5a", "alerta": "#e0a800", "neutro": "#8895a7"}
+TONO_COLOR = {"alza": "#f87171", "baja": "#34d399", "alerta": "#fbbf24", "neutro": "#94a3b8"}
 TONO_ICONO = {"alza": "🔺", "baja": "🔻", "alerta": "⚠️", "neutro": "•"}
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """`#rrggbb` → `rgba(r,g,b,alpha)` para rellenos translúcidos bajo cada serie."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
 
 # `use_container_width` quedó deprecado en Streamlit 1.49 a favor de `width`, y su
 # fecha de remoción ya pasó (31/12/2025): el día que lo saquen, cada gráfico del
@@ -97,63 +108,101 @@ ANCHO = ({"width": "stretch"}
 
 _CSS = """
 <style>
-  /* Fondo gris de la app y tarjetas blancas */
-  .stApp {background: #eef1f6;}
+  :root {
+      --bg:#0b1220; --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.07);
+      --border:rgba(255,255,255,.09); --border-hi:rgba(43,107,255,.55);
+      --fg:#f1f5f9; --fg-muted:#94a3b8; --fg-dim:#64748b; --accent:#2b6bff;
+  }
+  /* Fondo oscuro con glow radial azul (mood de las referencias) */
+  .stApp {
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(43,107,255,.20), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(167,139,250,.12), transparent 55%),
+        #0b1220;
+      background-attachment: fixed;
+  }
   [data-testid="stHeader"] {background: transparent;}
   .block-container {padding-top: 1.6rem; padding-bottom: 2.5rem;
       padding-left: 2.2rem; padding-right: 2.2rem;}
 
-  /* Cada st.container(border=True) es una tarjeta */
+  /* Cada st.container(border=True) es una tarjeta de vidrio */
   [data-testid="stVerticalBlockBorderWrapper"] {
-      background: #ffffff; border: 1px solid #e7ecf2 !important;
-      border-radius: 16px; padding: 6px 6px;
-      box-shadow: 0 1px 3px rgba(20,40,80,.06), 0 6px 20px rgba(20,40,80,.05);
+      background: var(--surface); border: 1px solid var(--border) !important;
+      border-radius: 18px; padding: 6px 6px;
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 10px 30px rgba(0,0,0,.35);
+      transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  [data-testid="stVerticalBlockBorderWrapper"]:hover {
+      border-color: var(--border-hi) !important;
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 14px 40px rgba(0,0,0,.45),
+                  0 0 0 1px rgba(43,107,255,.10);
   }
   /* Métricas dentro de tarjeta: sin doble fondo */
   [data-testid="stMetric"] {background: transparent; padding: 6px 10px;}
-  [data-testid="stMetricLabel"] p {font-size:.82rem; color:#5a6b80; font-weight:600;}
-  [data-testid="stMetricValue"] {font-size:1.6rem; color:#14243f;}
+  [data-testid="stMetricLabel"] p {font-size:.82rem; color:var(--fg-muted); font-weight:600;}
+  [data-testid="stMetricValue"] {font-size:1.6rem; color:var(--fg);}
 
   /* KPI card custom */
   .kpi-head {display:flex; align-items:center; gap:14px; padding:6px 6px 0 6px;}
   .kpi-icon {width:46px; height:46px; border-radius:12px; display:flex;
-      align-items:center; justify-content:center; font-size:1.35rem; flex:0 0 auto;}
-  .kpi-label {font-size:.82rem; color:#5a6b80; font-weight:600; margin-bottom:1px;}
-  .kpi-value {font-size:1.7rem; font-weight:700; color:#14243f; line-height:1.1;}
+      align-items:center; justify-content:center; font-size:1.35rem; flex:0 0 auto;
+      border:1px solid var(--border);}
+  .kpi-label {font-size:.82rem; color:var(--fg-muted); font-weight:600; margin-bottom:1px;}
+  .kpi-value {font-size:1.7rem; font-weight:700; color:var(--fg); line-height:1.1;
+      letter-spacing:-.01em;}
   .pill {display:inline-block; font-size:.74rem; font-weight:700; padding:2px 8px;
       border-radius:999px; margin-top:3px;}
 
   /* Insights */
-  .insight-card {background:#f7f9fc; border-left:4px solid #1f4e79; border-radius:8px;
-      padding:9px 13px; margin-bottom:7px; font-size:.9rem; line-height:1.4; color:#233;}
+  .insight-card {background:var(--surface); border-left:4px solid var(--accent);
+      border:1px solid var(--border); border-radius:10px;
+      padding:9px 13px; margin-bottom:7px; font-size:.9rem; line-height:1.4; color:#cbd5e1;}
 
   /* Hero */
-  .hero {background: linear-gradient(100deg,#1f4e79 0%,#2c6ba0 60%,#17a2b8 130%);
-      color:#fff; padding:22px 28px; border-radius:16px; margin-bottom:20px;
-      box-shadow:0 8px 24px rgba(31,78,121,.25);}
-  .hero h1 {color:#fff; font-size:1.65rem; margin:0 0 4px 0;}
-  .hero p {color:#dce7f2; margin:0; font-size:.95rem;}
+  .hero {background: linear-gradient(105deg,#12203c 0%,#1b2f5e 45%,#3b2a6b 130%);
+      border:1px solid var(--border); color:#fff; padding:22px 28px; border-radius:18px;
+      margin-bottom:20px; position:relative; overflow:hidden;
+      box-shadow:0 12px 40px rgba(0,0,0,.45);}
+  .hero::after {content:""; position:absolute; inset:0;
+      background: radial-gradient(600px 200px at 90% -40%, rgba(43,107,255,.35), transparent 60%);
+      pointer-events:none;}
+  .hero h1 {color:#fff; font-size:1.65rem; margin:0 0 4px 0; letter-spacing:-.01em;}
+  .hero p {color:#c3cfe6; margin:0; font-size:.95rem;}
 
   /* Títulos de sección */
-  .section-title {font-size:.78rem; font-weight:700; letter-spacing:.08em;
-      text-transform:uppercase; color:#8895a7; margin:8px 0 2px 4px;}
+  .section-title {font-size:.78rem; font-weight:700; letter-spacing:.10em;
+      text-transform:uppercase; color:var(--fg-dim); margin:8px 0 2px 4px;}
 
-  /* Sidebar oscuro */
-  section[data-testid="stSidebar"] {background:#14243f;}
-  section[data-testid="stSidebar"] * {color:#e7edf5;}
+  /* Sidebar oscuro glass */
+  section[data-testid="stSidebar"] {
+      background: linear-gradient(180deg,#0a0f1c 0%,#0b1220 100%);
+      border-right:1px solid var(--border);}
   section[data-testid="stSidebar"] h1 {color:#fff; font-size:1.15rem;}
-  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {color:#9fb2cc;}
+  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {color:var(--fg-muted);}
   section[data-testid="stSidebar"] div[role="radiogroup"] {gap:4px;}
   section[data-testid="stSidebar"] div[role="radiogroup"] label {
-      padding:9px 12px; border-radius:10px; margin:1px 0; transition:background .15s;
-      cursor:pointer;}
-  section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {background:#1e3355;}
-  section[data-testid="stSidebar"] div[role="radiogroup"] label p {font-weight:600;}
+      padding:9px 12px; border-radius:10px; margin:1px 0; cursor:pointer;
+      border:1px solid transparent; transition:background .15s ease, border-color .15s ease;}
+  section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+      background:rgba(255,255,255,.05); border-color:var(--border);}
+  section[data-testid="stSidebar"] div[role="radiogroup"] label p {font-weight:600; color:#cbd5e1;}
   section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-      background:#ef6c57;}
+      background:linear-gradient(90deg,rgba(43,107,255,.90),rgba(43,107,255,.65));
+      border-color:var(--border-hi);
+      box-shadow:0 4px 14px rgba(43,107,255,.35);}
   section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
       color:#fff;}
   section[data-testid="stSidebar"] div[role="radiogroup"] input {display:none;}
+
+  /* Accesibilidad: foco visible para navegación por teclado */
+  :focus-visible {outline:2px solid var(--accent) !important; outline-offset:2px;
+      border-radius:6px;}
+  /* Respetar preferencia de movimiento reducido */
+  @media (prefers-reduced-motion: reduce) {
+      * {transition:none !important; animation:none !important;}
+  }
 </style>
 """
 st.markdown(_CSS, unsafe_allow_html=True)
@@ -164,17 +213,20 @@ st.markdown(_CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 def _estilo(fig: go.Figure, height: int = 400, leyenda: bool = True) -> go.Figure:
     fig.update_layout(
-        template="plotly_white", height=height, hovermode="x unified",
-        margin=dict(t=48, b=24, l=8, r=8), font=dict(family="sans-serif", size=13),
+        template="plotly_dark", height=height, hovermode="x unified",
+        margin=dict(t=48, b=24, l=8, r=8),
+        font=dict(family="sans-serif", size=13, color="#cbd5e1"),
         legend=dict(orientation="h", y=-0.18, x=0) if leyenda else dict(),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(gridcolor="#eef2f6", zeroline=False)
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="#0e1526", bordercolor="rgba(255,255,255,.12)",
+                        font=dict(color="#f1f5f9")))
+    fig.update_xaxes(showgrid=False, color="#94a3b8", linecolor="rgba(255,255,255,.10)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False, color="#94a3b8")
     return fig
 
 
 def _titulo(fig: go.Figure, texto: str) -> go.Figure:
-    fig.update_layout(title=dict(text=texto, font=dict(size=15, color=COLOR["primario"])))
+    fig.update_layout(title=dict(text=texto, font=dict(size=15, color="#e8edf6")))
     return fig
 
 
@@ -187,9 +239,11 @@ def _selector_rango(fig: go.Figure, slider: bool = True) -> go.Figure:
                      dict(count=3, label="3A", step="year", stepmode="backward"),
                      dict(count=5, label="5A", step="year", stepmode="backward"),
                      dict(step="all", label="Todo")],
-            bgcolor="#eef2f6", activecolor=COLOR["primario"], x=0.5, y=1.16,
-            font=dict(size=11)),
-        rangeslider=dict(visible=slider, thickness=0.05))
+            bgcolor="rgba(255,255,255,.06)", activecolor=COLOR["primario"],
+            bordercolor="rgba(255,255,255,.12)", font=dict(size=11, color="#cbd5e1"),
+            x=0.5, y=1.16),
+        rangeslider=dict(visible=slider, thickness=0.05,
+                         bgcolor="rgba(255,255,255,.03)"))
     return fig
 
 
@@ -203,7 +257,7 @@ def linea(series: dict[str, pd.Series], titulo: str, ytitulo: str,
             x=s.index, y=s.values, name=nombre, mode="lines",
             line=dict(width=2.4, color=color, shape="hv" if step else "linear"),
             fill="tozeroy" if area and len(series) == 1 else None,
-            fillcolor="rgba(31,78,121,0.08)" if area else None))
+            fillcolor=_rgba(color, 0.12) if area else None))
     _estilo(fig, leyenda=len(series) > 1)
     _titulo(fig, titulo)
     fig.update_layout(yaxis_title=ytitulo)
@@ -229,7 +283,7 @@ def sparkline(s: pd.Series, color: str) -> go.Figure:
     s = s.dropna()
     fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines",
                                line=dict(width=2, color=color),
-                               fill="tozeroy", fillcolor="rgba(31,78,121,0.06)"))
+                               fill="tozeroy", fillcolor=_rgba(color, 0.14)))
     fig.update_layout(height=56, margin=dict(t=0, b=0, l=0, r=0),
                       xaxis=dict(visible=False), yaxis=dict(visible=False),
                       showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
@@ -240,14 +294,16 @@ def sparkline(s: pd.Series, color: str) -> go.Figure:
 def gauge(valor: float, titulo: str, rango: list, color: str,
           suffix: str = "%") -> go.Figure:
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=valor, number=dict(suffix=suffix, font=dict(size=26)),
-        title=dict(text=titulo, font=dict(size=13, color="#5a6b80")),
-        gauge=dict(axis=dict(range=rango, tickcolor="#8895a7"),
+        mode="gauge+number", value=valor,
+        number=dict(suffix=suffix, font=dict(size=26, color="#f1f5f9")),
+        title=dict(text=titulo, font=dict(size=13, color="#94a3b8")),
+        gauge=dict(axis=dict(range=rango, tickcolor="#64748b",
+                             tickfont=dict(color="#94a3b8")),
                    bar=dict(color=color, thickness=0.28),
-                   bgcolor="#eef2f6", borderwidth=0,
-                   steps=[dict(range=[rango[0], rango[1]], color="#f4f7fb")])))
+                   bgcolor="rgba(255,255,255,.05)", borderwidth=0,
+                   steps=[dict(range=[rango[0], rango[1]], color="rgba(255,255,255,.03)")])))
     fig.update_layout(height=210, margin=dict(t=40, b=10, l=20, r=20),
-                      paper_bgcolor="rgba(0,0,0,0)")
+                      paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#cbd5e1"))
     return fig
 
 
@@ -256,10 +312,11 @@ def gauge(valor: float, titulo: str, rango: list, color: str,
 # ---------------------------------------------------------------------------
 def _pill(delta_num: float, texto: str, malo: bool | None) -> str:
     if malo is None:
-        bg, fg = "#eef1f6", "#5a6b80"
+        bg, fg = "rgba(148,163,184,.16)", "#cbd5e1"
     else:
         es_bueno = (delta_num > 0 and not malo) or (delta_num < 0 and malo)
-        bg, fg = ("#e7f6ec", "#1e7e46") if es_bueno else ("#fdeaea", "#c0392b")
+        bg, fg = (("rgba(52,211,153,.16)", "#6ee7b7") if es_bueno
+                  else ("rgba(248,113,113,.16)", "#fca5a5"))
     flecha = "▲" if delta_num > 0 else ("▼" if delta_num < 0 else "▬")
     return f'<span class="pill" style="background:{bg};color:{fg}">{flecha} {texto}</span>'
 
@@ -593,7 +650,6 @@ def _cadena(anio: str):
             banda_riesgo, ordenes_riesgo)
 
 
-
 def pagina_econometria():
     st.markdown(
         '<div class="hero"><h1>🧮 Econometría — relato monetario-cambiario</h1>'
@@ -644,7 +700,7 @@ def pagina_econometria():
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=x + x[::-1],
                                      y=list(banda.superior) + list(banda.inferior)[::-1],
-                                     fill="toself", fillcolor="rgba(239,108,87,0.16)",
+                                     fill="toself", fillcolor=_rgba(COLOR["acento"], 0.18),
                                      line=dict(width=0), hoverinfo="skip",
                                      name=f"IC {int((1-banda.signif)*100)}%"))
             fig.add_trace(go.Scatter(x=x, y=list(banda.puntual), mode="lines",
@@ -667,11 +723,15 @@ def pagina_econometria():
         with st.container(border=True):
             st.subheader("Sensibilidad al orden de Cholesky")
             fig = go.Figure()
+            # Trazo distinto por ordenamiento además del color: en escala de grises
+            # o con daltonismo, las tres curvas siguen siendo distinguibles (auditoría).
+            trazos = ["solid", "dash", "dot"]
             for i, col in enumerate(ordenes.columns):
                 etiqueta = " → ".join(ETIQUETA.get(t, t) for t in col.split(" → "))
                 fig.add_trace(go.Scatter(x=list(ordenes.index), y=ordenes[col],
                                          mode="lines", name=etiqueta,
-                                         line=dict(width=2.4, color=PALETA[i % len(PALETA)])))
+                                         line=dict(width=2.4, color=PALETA[i % len(PALETA)],
+                                                   dash=trazos[i % len(trazos)])))
             fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
             _estilo(fig, height=340, leyenda=True)
             fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. (pp)")
@@ -827,7 +887,7 @@ def pagina_econometria():
             fig = go.Figure(go.Scatter(x=list(acum.index), y=acum.values * 100,
                                        mode="lines+markers",
                                        line=dict(color=COLOR["primario"], width=3),
-                                       fill="tozeroy", fillcolor="rgba(31,78,121,0.08)"))
+                                       fill="tozeroy", fillcolor=_rgba(COLOR["primario"], 0.12)))
             _estilo(fig, height=320, leyenda=False)
             fig.update_layout(xaxis_title="meses tras la devaluación",
                               yaxis_title="% trasladado a precios")
