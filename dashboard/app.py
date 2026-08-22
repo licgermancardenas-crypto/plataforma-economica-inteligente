@@ -65,6 +65,11 @@ def catalogo() -> pd.DataFrame:
     return data.catalogo()
 
 
+@st.cache_data(ttl=3600)
+def indicadores() -> pd.DataFrame:
+    return data.indicadores()
+
+
 def _fecha_datos() -> str:
     """Última observación efectivamente cargada (no la fecha de hoy)."""
     f = bootstrap.estado_datos()["ultima_obs"]
@@ -399,11 +404,11 @@ def pagina_explorador():
         'los insights se recalculan sobre lo que ves</p></div>', unsafe_allow_html=True)
     cat = catalogo()
     nombres = cat.set_index("series_id")["name"].to_dict()
-    grupos = {
-        "Inflación (IPC)": "inflacion", "Tipo de cambio y brecha": "tipo_cambio",
-        "Tasa de referencia": "tasa", "Actividad (EMAE)": "actividad",
-        "Reservas y base monetaria": "monetario", "Desempleo (EPH)": "empleo",
-    }
+    # Los grupos salen de la tabla `indicators`: sumar un indicador al catálogo
+    # alcanza para que aparezca acá. Se omiten los que todavía no tienen series.
+    con_series = set(cat.indicator_id)
+    grupos = {r["name"]: r["indicator_id"] for _, r in indicadores().iterrows()
+              if r["indicator_id"] in con_series}
 
     with st.container(border=True):
         top = st.columns([2, 2])

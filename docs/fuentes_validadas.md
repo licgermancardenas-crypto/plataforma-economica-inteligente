@@ -1,6 +1,6 @@
 # Fuentes de datos validadas — Plataforma Económica Inteligente
 
-**Validado:** 2026-07-30 · **Script:** `scripts/validate_sources.py` · **Estado:** 7/7 OK
+**Validado:** 2026-08-22 · **Script:** `scripts/validate_sources.py` · **Estado:** 11/11 OK
 
 Este documento es la fuente de verdad de qué serie exacta consume el pipeline.
 Corrige y precisa el *Anexo técnico* del PDF de planificación.
@@ -23,9 +23,41 @@ Corrige y precisa el *Anexo técnico* del PDF de planificación.
 | 5b| Base monetaria | BCRA Monetarias v4.0 | `idVariable=15` | Diaria | Millones ARS | 2026-07-27 |
 | 6 | Tasa de desocupación (nacional) | INDEC/EPH · datos.gob.ar | `42.3_EPH_PUNTUATAL_0_M_30` | Trimestral | Fracción (×100 = %) | 2026-Q1 |
 
+## 1b. Bloque fiscal — Secretaría de Hacienda (Ministerio de Economía)
+
+Incorporado 2026-08-22. Publica en la **misma** API de Series de Tiempo que INDEC, así que
+no requirió fetcher nuevo: son filas de catálogo. Por eso el `source_id` pasó de
+`indec_datosgob` a **`datosgob_series`** — la fuente es la API del Estado, no un organismo.
+
+| Serie | ID | Frecuencia | Unidad | Desde | Último |
+|-------|----|-----------|--------|-------|--------|
+| Resultado primario SPN (IMIG) | `452.3_RESULTADO_RIO_0_M_18_54` | Mensual | Millones ARS | 2016-01 | 2026-06 |
+| Intereses netos SPN (IMIG) | `452.3_INTERESES_TOS_0_M_15_62` | Mensual | Millones ARS | 2016-01 | 2026-06 |
+| Resultado financiero SPN (IMIG) | `452.3_RESULTADO_ERO_0_M_20_25` | Mensual | Millones ARS | 2016-01 | 2026-06 |
+| Recaudación tributaria total | `172.3_TL_RECAION_M_0_0_17` | Mensual | Millones ARS | 1997-01 | 2026-07 |
+
+**Control de integridad** (verificado sobre las 126 observaciones ingeridas):
+`resultado_primario − intereses_netos = resultado_financiero`, con error máximo **0,0000**.
+
+**Advertencias de uso:**
+- Son **flujos mensuales**, no acumulados, pese a que el catálogo etiqueta la recaudación
+  como "Anuales" (artefacto de la descripción, no del dato).
+- Están en **pesos nominales**. Con inflación de tres dígitos, un VAR en niveles nominales
+  estima inflación, no política fiscal: deflactar por IPC o expresar en % del EMAE.
+- `resultado_financiero` es **colineal exacto** con `resultado_primario + intereses_netos`.
+  En un VAR entra esa serie **o** las otras dos, nunca las tres.
+- El IMIG **no publica** los agregados "Ingresos totales" ni "Gastos primarios" como serie
+  propia: solo los componentes desagregados y los tres resultados. Si se necesitan los
+  agregados hay que sumar componentes, o usar `recaudacion_total` como proxy de ingresos
+  (más larga y de publicación más temprana).
+- Muestra corta: 126 meses desde 2016-01. Alcanza para un VAR mensual parsimonioso
+  (2-3 rezagos, pocas variables), no para uno saturado.
+
 Endpoints base:
 - **BCRA:** `https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias` (catálogo) y `/Monetarias/{id}?desde=&hasta=` (serie).
 - **datos.gob.ar:** `https://apis.datos.gob.ar/series/api/series?ids={id}&format=json`.
+  Cuidado al pedir **varios ids de distinta frecuencia en una misma request**: la API
+  colapsa a la frecuencia más gruesa y promedia. La ingesta pide un id por request.
 - **dolarapi:** `https://dolarapi.com/v1/dolares/{tipo}`.
 
 ---

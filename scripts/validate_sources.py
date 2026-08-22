@@ -42,6 +42,12 @@ SERIES_DATOS_GOB = {
     # HALLAZGO: existe serie nacional trimestral vigente (llega a 2026) →
     # el desempleo NO requiere el scraping de PDF que temía el anexo del PDF.
     "Desempleo (tasa desoc.)":    ("42.3_EPH_PUNTUATAL_0_M_30",    "trimestral"),
+    # Bloque fiscal — Secretaría de Hacienda (Ministerio de Economía), no INDEC.
+    # Publica en la MISMA API: el pipeline no necesitó un fetcher nuevo.
+    "Resultado primario (IMIG)":  ("452.3_RESULTADO_RIO_0_M_18_54", "mensual"),
+    "Intereses netos (IMIG)":     ("452.3_INTERESES_TOS_0_M_15_62", "mensual"),
+    "Resultado financiero (IMIG)":("452.3_RESULTADO_ERO_0_M_20_25", "mensual"),
+    "Recaudación total":          ("172.3_TL_RECAION_M_0_0_17",     "mensual"),
 }
 
 DOLARAPI = {

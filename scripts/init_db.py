@@ -29,8 +29,10 @@ SCHEMA = ROOT / "sql" / "schema.sql"
 SOURCES = [
     ("bcra",           "Banco Central de la República Argentina (API v4.0)",
      "https://api.bcra.gob.ar/estadisticas/v4.0", "Monetarias. verify=False si falla SSL."),
-    ("indec_datosgob", "INDEC vía API Series de Tiempo del Estado",
-     "https://apis.datos.gob.ar/series/api", "IDs canónicos por serie."),
+    ("datosgob_series", "API Series de Tiempo del Estado (datos.gob.ar)",
+     "https://apis.datos.gob.ar/series/api",
+     "Infraestructura común: publican INDEC y la Secretaría de Hacienda (Min. Economía), "
+     "entre otros. IDs canónicos por serie."),
     ("argentinadatos", "ArgentinaDatos (histórico de cotizaciones)",
      "https://api.argentinadatos.com/v1", "Histórico de dólar desde 2011 (oficial/blue/MEP/CCL)."),
     ("dolarapi",       "dolarApi (cotización en tiempo real)",
@@ -50,13 +52,16 @@ INDICATORS = [
      "Reservas internacionales del BCRA y base monetaria."),
     ("empleo",       "Mercado laboral (EPH)",        "empleo",
      "Tasa de desocupación nacional (EPH, trimestral)."),
+    ("fiscal",       "Resultado fiscal y recaudación", "fiscal",
+     "Sector Público Nacional no financiero: resultado primario, intereses, resultado "
+     "financiero y recaudación. Secretaría de Hacienda (Ministerio de Economía)."),
 ]
 
 # series_id, indicator, source, external_id, name, unit, freq, sa, kind, scale, base, notes
 SERIES = [
-    ("ipc_general",   "inflacion",   "indec_datosgob", "148.3_INIVELNAL_DICI_M_26",
+    ("ipc_general",   "inflacion",   "datosgob_series", "148.3_INIVELNAL_DICI_M_26",
      "IPC Nivel General Nacional", "índice dic-2016=100", "M", "none", "index", 1.0, "dic-2016", None),
-    ("ipc_nucleo",    "inflacion",   "indec_datosgob", "148.3_INUCLEONAL_DICI_M_19",
+    ("ipc_nucleo",    "inflacion",   "datosgob_series", "148.3_INUCLEONAL_DICI_M_19",
      "IPC Núcleo Nacional", "índice dic-2016=100", "M", "none", "index", 1.0, "dic-2016",
      "Aísla ruido de regulados/estacionales."),
 
@@ -76,9 +81,9 @@ SERIES = [
      "TAMAR bancos privados (TNA)", "% nominal anual", "D", "none", "rate", 1.0, None,
      "Proxy de tasa de referencia. REVISAR según régimen monetario."),
 
-    ("emae_original", "actividad",   "indec_datosgob", "143.3_NO_PR_2004_A_21",
+    ("emae_original", "actividad",   "datosgob_series", "143.3_NO_PR_2004_A_21",
      "EMAE serie original", "índice 2004=100", "M", "none", "index", 1.0, "2004", None),
-    ("emae_desest",   "actividad",   "indec_datosgob", "302.3_S_DESEST_NRAL_0_S_19",
+    ("emae_desest",   "actividad",   "datosgob_series", "302.3_S_DESEST_NRAL_0_S_19",
      "EMAE desestacionalizada", "índice 2004=100", "M", "sa", "index", 1.0, "2004",
      "Desestacionalización oficial INDEC."),
 
@@ -87,9 +92,27 @@ SERIES = [
     ("base_monetaria","monetario",   "bcra", "15",
      "Base monetaria", "millones ARS", "D", "none", "level", 1.0, None, None),
 
-    ("desempleo",     "empleo",      "indec_datosgob", "42.3_EPH_PUNTUATAL_0_M_30",
+    ("desempleo",     "empleo",      "datosgob_series", "42.3_EPH_PUNTUATAL_0_M_30",
      "Tasa de desocupación nacional", "%", "Q", "none", "rate", 100.0, None,
      "Fuente devuelve fracción (0.078); scale=100 la normaliza a 7.8."),
+
+    # Bloque fiscal — Secretaría de Hacienda (Min. Economía) vía Series de Tiempo.
+    # IMIG = Informe Mensual de Ingresos y Gastos del SPN. Flujos MENSUALES (no acumulados)
+    # en pesos NOMINALES: hay que deflactar por IPC (o expresar en % del EMAE) antes de
+    # estimar nada — en niveles nominales un VAR captura inflación, no política fiscal.
+    ("resultado_primario",   "fiscal", "datosgob_series", "452.3_RESULTADO_RIO_0_M_18_54",
+     "Resultado primario SPN (IMIG)", "millones ARS", "M", "none", "level", 1.0, None,
+     "Ingresos totales menos gastos primarios. Identidad: primario - intereses = financiero."),
+    ("intereses_netos",      "fiscal", "datosgob_series", "452.3_INTERESES_TOS_0_M_15_62",
+     "Intereses netos SPN (IMIG)", "millones ARS", "M", "none", "level", 1.0, None,
+     "Intereses de deuda netos de intra-sector público."),
+    ("resultado_financiero", "fiscal", "datosgob_series", "452.3_RESULTADO_ERO_0_M_20_25",
+     "Resultado financiero SPN (IMIG)", "millones ARS", "M", "none", "level", 1.0, None,
+     "COLINEAL con primario+intereses (identidad exacta): en un VAR va ESTA o aquellas dos, "
+     "nunca las tres."),
+    ("recaudacion_total",    "fiscal", "datosgob_series", "172.3_TL_RECAION_M_0_0_17",
+     "Recaudación tributaria total", "millones ARS", "M", "none", "level", 1.0, None,
+     "Desde 1997: mucho más larga que el IMIG (2016+) y se publica antes."),
 ]
 
 QUALITY_FLAGS = [
@@ -122,6 +145,13 @@ def main():
         "(series_id,indicator_id,source_id,external_id,name,unit,frequency,"
         " seasonal_adj,kind,scale,base_period,notes) "
         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", SERIES)
+    # Las series ya apuntan al catálogo nuevo: purgar fuentes/indicadores que salieron
+    # de él (el rename indec_datosgob -> datosgob_series sobre una base ya creada).
+    con.execute(f"DELETE FROM sources WHERE source_id NOT IN ({','.join('?' * len(SOURCES))})",
+                [s[0] for s in SOURCES])
+    con.execute(f"DELETE FROM indicators WHERE indicator_id NOT IN "
+                f"({','.join('?' * len(INDICATORS))})", [i[0] for i in INDICATORS])
+
     con.executemany("INSERT OR REPLACE INTO quality_flags VALUES (?,?)", QUALITY_FLAGS)
     # quality_periods no tiene clave natural; limpiamos y recargamos para idempotencia
     con.execute("DELETE FROM quality_periods")

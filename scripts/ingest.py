@@ -7,7 +7,7 @@ del catálogo (`series`) desde su API de origen, normalizando el valor
 (crudo * series.scale) y aplicando las banderas de calidad de `quality_periods`.
 
 Tres patrones de fuente:
-  - indec_datosgob : GET /series?ids=... (una request, orden ascendente)
+  - datosgob_series : GET /series?ids=... (una request, orden ascendente)
   - bcra           : GET /Monetarias/{id} paginado por offset (orden descendente)
   - argentinadatos : GET /cotizaciones/dolares/{casa} (histórico completo)
   - dolarapi       : se omite (solo valor actual; es fallback tiempo real)
@@ -88,7 +88,7 @@ def fetch_argentinadatos(external_id: str) -> list[tuple[str, float]]:
 
 
 FETCHERS = {
-    "indec_datosgob": fetch_datosgob,
+    "datosgob_series": fetch_datosgob,
     "bcra": fetch_bcra,
     "argentinadatos": fetch_argentinadatos,
 }
