@@ -33,8 +33,9 @@ SOURCES = [
      "https://apis.datos.gob.ar/series/api",
      "Infraestructura común: publican INDEC y la Secretaría de Hacienda (Min. Economía), "
      "entre otros. IDs canónicos por serie."),
-    ("argentinadatos", "ArgentinaDatos (histórico de cotizaciones)",
-     "https://api.argentinadatos.com/v1", "Histórico de dólar desde 2011 (oficial/blue/MEP/CCL)."),
+    ("argentinadatos", "ArgentinaDatos (históricos financieros)",
+     "https://api.argentinadatos.com/v1",
+     "Dólar desde 2011 y riesgo país desde 1999. El external_id es el path bajo /v1."),
     ("dolarapi",       "dolarApi (cotización en tiempo real)",
      "https://dolarapi.com/v1", "Solo valor actual. Fallback tiempo real del TC."),
 ]
@@ -48,10 +49,14 @@ INDICATORS = [
      "Tasa de referencia de mercado (TAMAR). Pases pasivos en 0 desde 2024/25."),
     ("actividad",    "Actividad económica (EMAE)",   "actividad",
      "Estimador Mensual de Actividad Económica, original y desestacionalizado."),
-    ("monetario",    "Reservas y base monetaria",    "externo",
+    ("monetario",    "Reservas y base monetaria",    "monetario",
      "Reservas internacionales del BCRA y base monetaria."),
     ("empleo",       "Mercado laboral (EPH)",        "empleo",
      "Tasa de desocupación nacional (EPH, trimestral)."),
+    ("externo",      "Sector externo (comercio)",    "externo",
+     "Exportaciones e importaciones totales (INDEC). El saldo comercial se deriva."),
+    ("riesgo",       "Riesgo soberano",              "financiero",
+     "Riesgo país (EMBI+ Argentina), diario desde 1999."),
     ("fiscal",       "Resultado fiscal y recaudación", "fiscal",
      "Sector Público Nacional no financiero: resultado primario, intereses, resultado "
      "financiero y recaudación. Secretaría de Hacienda (Ministerio de Economía)."),
@@ -65,13 +70,13 @@ SERIES = [
      "IPC Núcleo Nacional", "índice dic-2016=100", "M", "none", "index", 1.0, "dic-2016",
      "Aísla ruido de regulados/estacionales."),
 
-    ("usd_oficial",   "tipo_cambio", "argentinadatos", "oficial",
+    ("usd_oficial",   "tipo_cambio", "argentinadatos", "cotizaciones/dolares/oficial",
      "Dólar oficial (venta)", "ARS/USD", "D", "none", "level", 1.0, None, "Histórico desde 2011."),
-    ("usd_mep",       "tipo_cambio", "argentinadatos", "bolsa",
+    ("usd_mep",       "tipo_cambio", "argentinadatos", "cotizaciones/dolares/bolsa",
      "Dólar MEP/Bolsa (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
-    ("usd_ccl",       "tipo_cambio", "argentinadatos", "contadoconliqui",
+    ("usd_ccl",       "tipo_cambio", "argentinadatos", "cotizaciones/dolares/contadoconliqui",
      "Dólar CCL (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
-    ("usd_blue",      "tipo_cambio", "argentinadatos", "blue",
+    ("usd_blue",      "tipo_cambio", "argentinadatos", "cotizaciones/dolares/blue",
      "Dólar blue (venta)", "ARS/USD", "D", "none", "level", 1.0, None, None),
     ("tc_mayorista",  "tipo_cambio", "bcra", "5",
      "Tipo de cambio mayorista de referencia", "ARS/USD", "D", "none", "level", 1.0, None,
@@ -113,6 +118,20 @@ SERIES = [
     ("recaudacion_total",    "fiscal", "datosgob_series", "172.3_TL_RECAION_M_0_0_17",
      "Recaudación tributaria total", "millones ARS", "M", "none", "level", 1.0, None,
      "Desde 1997: mucho más larga que el IMIG (2016+) y se publica antes."),
+
+    # Sector externo — INDEC vía Series de Tiempo. X y M van por separado: el saldo
+    # comercial es una resta y se calcula al analizar, no se persiste (mismo criterio
+    # que el remuestreo, cf. sql/schema.sql). Además la serie oficial de saldo
+    # (164.3_SOTALTAL_0_0_8) está congelada en 2025-02, mientras X y M llegan a 2026-06.
+    ("exportaciones", "externo", "datosgob_series", "74.3_IET_0_M_16",
+     "Exportaciones totales", "millones USD", "M", "none", "level", 1.0, None, None),
+    ("importaciones", "externo", "datosgob_series", "74.3_IIT_0_M_25",
+     "Importaciones totales", "millones USD", "M", "none", "level", 1.0, None, None),
+
+    ("riesgo_pais",   "riesgo",  "argentinadatos", "finanzas/indices/riesgo-pais",
+     "Riesgo país (EMBI+ Argentina)", "puntos básicos", "D", "none", "level", 1.0, None,
+     "Única serie de la base que cubre 2001, 2018 y 2019: sirve para identificar "
+     "quiebres estructurales fuera de la muestra corta post-2016."),
 ]
 
 QUALITY_FLAGS = [

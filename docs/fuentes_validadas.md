@@ -1,6 +1,6 @@
 # Fuentes de datos validadas — Plataforma Económica Inteligente
 
-**Validado:** 2026-08-22 · **Script:** `scripts/validate_sources.py` · **Estado:** 11/11 OK
+**Validado:** 2026-08-22 · **Script:** `scripts/validate_sources.py` · **Estado:** 14/14 OK
 
 Este documento es la fuente de verdad de qué serie exacta consume el pipeline.
 Corrige y precisa el *Anexo técnico* del PDF de planificación.
@@ -22,6 +22,43 @@ Corrige y precisa el *Anexo técnico* del PDF de planificación.
 | 5 | Reservas internacionales | BCRA Monetarias v4.0 | `idVariable=1` | Diaria | Millones USD | 2026-07-27 |
 | 5b| Base monetaria | BCRA Monetarias v4.0 | `idVariable=15` | Diaria | Millones ARS | 2026-07-27 |
 | 6 | Tasa de desocupación (nacional) | INDEC/EPH · datos.gob.ar | `42.3_EPH_PUNTUATAL_0_M_30` | Trimestral | Fracción (×100 = %) | 2026-Q1 |
+
+## 1c. Sector externo y riesgo soberano
+
+Incorporado 2026-08-22.
+
+| Serie | Fuente / ID | Frecuencia | Unidad | Desde | Último |
+|-------|-------------|-----------|--------|-------|--------|
+| Exportaciones totales | INDEC · `74.3_IET_0_M_16` | Mensual | Millones USD | 1992-01 | 2026-06 |
+| Importaciones totales | INDEC · `74.3_IIT_0_M_25` | Mensual | Millones USD | 1992-01 | 2026-06 |
+| Riesgo país (EMBI+) | argentinadatos · `finanzas/indices/riesgo-pais` | Diaria | Puntos básicos | 1999-01-22 | 2026-08-20 |
+
+**El saldo comercial no se persiste.** La serie oficial (`164.3_SOTALTAL_0_0_8`) está
+congelada en 2025-02, mientras X y M llegan a 2026-06. Se deriva al analizar
+(`exportaciones - importaciones`), mismo criterio que el remuestreo: transformaciones
+en pandas, no en la base. Acumulado 12 meses a 2026-06: **+22.481 M USD**.
+
+**Riesgo país — por qué importa para la identificación.** Es la única serie de la base
+que cubre 2001-2002, 2018, 2019 y 2020. Verificado contra los episodios conocidos:
+
+| Año | Máximo | Promedio |
+|-----|--------|----------|
+| 2001 | 5.495 pb | 1.546 pb |
+| 2002 | **7.222 pb** (07-08, post-default) | 5.723 pb |
+| 2018 | 829 pb | 561 pb |
+| 2019 | 2.532 pb (PASO) | 1.309 pb |
+| 2020 | 4.362 pb (pre-reestructuración) | 2.231 pb |
+| 2026 | 637 pb | 512 pb |
+
+Con el resto de la base arrancando en 2016, esta serie es la que permite estimar
+quiebres estructurales sobre episodios de crisis reales en vez de sobre una muestra
+que no contiene ninguno.
+
+**Hallazgo preliminar** (164 meses, 2013-01 → 2026-08, variaciones logarítmicas):
+Granger bidireccional entre riesgo país y brecha cambiaria, pero **asimétrico** —
+brecha → riesgo país es mucho más fuerte (p = 0,0007 a 3 rezagos) que riesgo país →
+brecha (p = 0,068). La brecha anticipa al riesgo soberano, no al revés. A confirmar
+con un VAR bien especificado. Correlación brecha–reservas: **−0,473**.
 
 ## 1b. Bloque fiscal — Secretaría de Hacienda (Ministerio de Economía)
 
@@ -59,6 +96,10 @@ Endpoints base:
   Cuidado al pedir **varios ids de distinta frecuencia en una misma request**: la API
   colapsa a la frecuencia más gruesa y promedia. La ingesta pide un id por request.
 - **dolarapi:** `https://dolarapi.com/v1/dolares/{tipo}`.
+- **argentinadatos:** `https://api.argentinadatos.com/v1/{path}`. El `external_id`
+  del catálogo **es el path** (`cotizaciones/dolares/blue`,
+  `finanzas/indices/riesgo-pais`): la API sirve familias distintas bajo la misma
+  base y el campo del valor cambia (`venta` en cotizaciones, `valor` en índices).
 
 ---
 

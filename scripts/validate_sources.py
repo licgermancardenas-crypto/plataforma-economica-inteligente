@@ -48,6 +48,14 @@ SERIES_DATOS_GOB = {
     "Intereses netos (IMIG)":     ("452.3_INTERESES_TOS_0_M_15_62", "mensual"),
     "Resultado financiero (IMIG)":("452.3_RESULTADO_ERO_0_M_20_25", "mensual"),
     "Recaudación total":          ("172.3_TL_RECAION_M_0_0_17",     "mensual"),
+    # Sector externo (INDEC). La serie oficial de saldo comercial
+    # (164.3_SOTALTAL_0_0_8) está congelada en 2025-02: se derivan X - M.
+    "Exportaciones totales":      ("74.3_IET_0_M_16",               "mensual"),
+    "Importaciones totales":      ("74.3_IIT_0_M_25",               "mensual"),
+}
+
+ARGDATOS_INDICES = {
+    "Riesgo país (EMBI+)": "finanzas/indices/riesgo-pais",
 }
 
 DOLARAPI = {
@@ -164,6 +172,20 @@ def validar_serie_datos_gob(nombre, sid, freq_esp):
         _fail(nombre, f"{type(e).__name__}: {e}")
 
 
+def validar_argentinadatos():
+    print("\n[ArgentinaDatos] Índices financieros (histórico)")
+    for nombre, path in ARGDATOS_INDICES.items():
+        try:
+            j = get(f"https://api.argentinadatos.com/v1/{path}").json()
+            if not j:
+                _fail(nombre, "respuesta vacía"); continue
+            _ok(nombre, f"{len(j)} obs | {j[0]['fecha']}..{j[-1]['fecha']} | "
+                        f"último={j[-1].get('valor')}",
+                sample={"path": path, "obs": len(j), "ultimo": j[-1]})
+        except Exception as e:
+            _fail(nombre, f"{type(e).__name__}: {e}")
+
+
 def main():
     print("=" * 72)
     print("VALIDACIÓN DE FUENTES — Plataforma Económica Inteligente")
@@ -172,6 +194,7 @@ def main():
 
     validar_dolarapi()
     validar_bcra()
+    validar_argentinadatos()
     print("\n[INDEC/datos.gob.ar] Series de tiempo (IDs canónicos fijados)")
     for nombre, (sid, freq) in SERIES_DATOS_GOB.items():
         validar_serie_datos_gob(nombre, sid, freq)

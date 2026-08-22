@@ -1,6 +1,6 @@
 {
   "generado": "2026-08-22T04:57:31Z",
-  "observaciones": 42268,
+  "observaciones": 50780,
   "ultima_obs": "2026-08-21",
   "series": {
     "base_monetaria": {
@@ -22,6 +22,16 @@
       "obs": 269,
       "desde": "2004-01-01",
       "hasta": "2026-05-01"
+    },
+    "exportaciones": {
+      "obs": 414,
+      "desde": "1992-01-01",
+      "hasta": "2026-06-01"
+    },
+    "importaciones": {
+      "obs": 414,
+      "desde": "1992-01-01",
+      "hasta": "2026-06-01"
     },
     "intereses_netos": {
       "obs": 126,
@@ -57,6 +67,11 @@
       "obs": 126,
       "desde": "2016-01-01",
       "hasta": "2026-06-01"
+    },
+    "riesgo_pais": {
+      "obs": 7684,
+      "desde": "1999-01-22",
+      "hasta": "2026-08-20"
     },
     "tamar_priv": {
       "obs": 450,
