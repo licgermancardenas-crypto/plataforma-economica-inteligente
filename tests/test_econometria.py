@@ -72,6 +72,54 @@ def test_granger_no_detecta_series_independientes(idx):
     assert (res["p_valor"] < 0.01).sum() == 0
 
 
+@pytest.fixture
+def sistema_causal(idx):
+    """x = ruido; z responde a x rezagado. Orden [x, z] => shock en x pega en z."""
+    rng = np.random.default_rng(SEED + 8)
+    x = rng.standard_normal(len(idx))
+    z = np.empty(len(idx))
+    z[0] = 0.0
+    for t in range(1, len(idx)):
+        z[t] = 0.6 * x[t - 1] + 0.3 * z[t - 1] + 0.1 * rng.standard_normal()
+    return pd.DataFrame({"x": x, "z": z}, index=idx)
+
+
+def test_granger_sistema_detecta_la_direccion_correcta(sistema_causal):
+    """
+    En [x, z] con z respondiendo a x rezagado, x precede a z de forma abrumadora.
+
+    No se exige que z -> x salga NO significativa: con n=300 esa dirección da un
+    falso positivo al 5% en ~4 de cada 30 seeds (comprobado), así que afirmarlo
+    sería testear la suerte del seed. El contraste que sí es estructural es el
+    de magnitudes: la dirección real es órdenes de magnitud más fuerte. El caso
+    negativo puro lo cubre `test_granger_sistema_corrige_multiplicidad`.
+    """
+    r = ec.granger_sistema(sistema_causal, [("x", "z"), ("z", "x")], maxlags=4)
+    assert bool(r.loc["x → z", "precede"])
+    assert r.loc["x → z", "estadístico F"] > 100 * r.loc["z → x", "estadístico F"]
+    assert r.attrs["n"] == len(sistema_causal)
+    # el p ajustado nunca puede ser menor que el crudo
+    assert (r["p ajustado"] >= r["p_valor"] - 1e-12).all()
+
+
+def test_granger_sistema_corrige_multiplicidad(idx):
+    """Con 6 pares de series independientes, Holm debe apagar los falsos positivos."""
+    rng = np.random.default_rng(SEED + 20)
+    v = pd.DataFrame({c: rng.standard_normal(len(idx)) for c in "abcd"}, index=idx)
+    pares = [("a", "b"), ("b", "a"), ("c", "d"), ("d", "c"), ("a", "c"), ("b", "d")]
+    r = ec.granger_sistema(v, pares, maxlags=3)
+    assert not r["precede"].any()
+
+
+def test_granger_robusto_marca_fragil_lo_que_no_aguanta_la_grilla(sistema_causal):
+    r = ec.granger_robusto(sistema_causal, [("x", "z"), ("z", "x")],
+                           rezagos=(1, 2, 3))
+    assert bool(r.loc["x → z", "robusta"])       # causa real: aguanta toda la grilla
+    assert not bool(r.loc["z → x", "robusta"])   # dirección falsa: no
+    assert r.loc["x → z", "signif. en"] == "3/3"
+    assert list(r.columns[:3]) == ["p (rez 1)", "p (rez 2)", "p (rez 3)"]
+
+
 # --- Pass-through ---
 def test_pass_through_recupera_estructura(idx):
     rng = np.random.default_rng(SEED + 4)
@@ -121,18 +169,6 @@ def test_diagnostico_clasifica_orden_de_integracion(idx):
 
 
 # --- IRF acumulada por bootstrap ---
-@pytest.fixture
-def sistema_causal(idx):
-    """x = ruido; z responde a x rezagado. Orden [x, z] => shock en x pega en z."""
-    rng = np.random.default_rng(SEED + 8)
-    x = rng.standard_normal(len(idx))
-    z = np.empty(len(idx))
-    z[0] = 0.0
-    for t in range(1, len(idx)):
-        z[t] = 0.6 * x[t - 1] + 0.3 * z[t - 1] + 0.1 * rng.standard_normal()
-    return pd.DataFrame({"x": x, "z": z}, index=idx)
-
-
 def test_bootstrap_banda_tiene_ancho_no_nulo(sistema_causal):
     # el motivo de existir de esta función: las bandas MC de statsmodels colapsan
     # sobre el punto en esta versión. Acá el intervalo debe tener ancho real.

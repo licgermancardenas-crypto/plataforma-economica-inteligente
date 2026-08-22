@@ -95,6 +95,88 @@ def granger(causa: pd.Series, efecto: pd.Series, maxlag: int = 6,
     return pd.DataFrame(filas).set_index("lag")
 
 
+def granger_sistema(v: pd.DataFrame, pares: list[tuple[str, str]],
+                    maxlags: int = 6, metodo: str = "holm") -> pd.DataFrame:
+    """
+    Granger de sistema: un test de Wald CONJUNTO por par sobre el VAR(p) ajustado,
+    con p elegido por AIC, más corrección por multiplicidad.
+
+    Por qué no alcanza `granger()` para armar tablas: esa función devuelve un
+    p-valor por rezago y el uso natural es quedarse con el mínimo. Eso es
+    selección post-hoc — con 10 rezagos el mínimo de 10 estadísticos correlacionados
+    cae bajo 0,05 mucho más del 5% de las veces bajo H0. En una tabla de N pares el
+    problema se multiplica. Acá se hace UN test por par (H0: todos los rezagos de
+    `causa` son cero en la ecuación de `efecto`) y se ajustan los N p-valores.
+
+    Comprobado en este proyecto: con minimización sobre 10 rezagos, riesgo país →
+    TC daba p=0,0005 en el régimen sin cepo; el Wald conjunto sobre el mismo VAR da
+    p=0,047, que no sobrevive la corrección. La conclusión se daba vuelta.
+
+    `metodo` es cualquiera de statsmodels.stats.multitest ('holm', 'bonferroni',
+    'fdr_bh'). Holm por defecto: controla el error de familia sin ser tan
+    conservador como Bonferroni.
+    """
+    from statsmodels.stats.multitest import multipletests
+
+    d = v.dropna()
+    base = VAR(d).fit(maxlags=maxlags, ic="aic")
+    # Un VAR(0) no tiene rezagos que testear y `test_causality` lanza RuntimeError.
+    # Pasa cuando las series son casi independientes (el AIC elige 0, correctamente).
+    # Se fuerza el mínimo de 1: el test entonces devuelve el p que corresponde —
+    # típicamente no significativo, que es la respuesta correcta.
+    p_ar = max(base.k_ar, 1)
+    res = base if base.k_ar == p_ar else VAR(d).fit(p_ar)
+    filas = []
+    for causa, efecto in pares:
+        w = res.test_causality(efecto, [causa], kind="f")
+        filas.append({"relación": f"{causa} → {efecto}", "p_valor": float(w.pvalue),
+                      "estadístico F": round(float(w.test_statistic), 2)})
+    out = pd.DataFrame(filas)
+    out["p ajustado"] = multipletests(out["p_valor"], method=metodo)[1]
+    out["precede"] = out["p ajustado"] < 0.05
+    out["p_valor"] = out["p_valor"].round(4)
+    out["p ajustado"] = out["p ajustado"].round(4)
+    out.attrs["rezagos"] = p_ar
+    out.attrs["n"] = len(d)
+    out.attrs["metodo"] = metodo
+    return out.set_index("relación")
+
+
+def granger_robusto(v: pd.DataFrame, pares: list[tuple[str, str]],
+                    rezagos: tuple[int, ...] = (1, 2, 3, 5, 10, 15),
+                    metodo: str = "holm") -> pd.DataFrame:
+    """
+    `granger_sistema` repetido a rezago FIJO sobre una grilla, para ver si la
+    conclusión depende de la selección del orden del VAR.
+
+    Motivo: en datos diarios el AIC no converge —en este proyecto eligió 3, 15 y 14
+    según dónde se pusiera el tope, mientras BIC elegía 0 y HQIC 1—. Con esa
+    dispersión, "el p-valor al orden que eligió el AIC" es un número arbitrario.
+    Una relación que sólo aparece a un rezago puntual y desaparece en los vecinos
+    es ruido; una que aguanta toda la grilla es señal.
+
+    Devuelve una columna de p ajustados por rezago (Holm dentro de cada rezago, que
+    es la familia de hipótesis comparables) y una columna `robusta` = significativa
+    en TODOS los rezagos probados. Esa última es la que hay que leer.
+    """
+    from statsmodels.stats.multitest import multipletests
+
+    d = v.dropna()
+    cols = {}
+    for p_fijo in rezagos:
+        res = VAR(d).fit(p_fijo)
+        ps = [float(res.test_causality(ef, [ca], kind="f").pvalue) for ca, ef in pares]
+        cols[f"p (rez {p_fijo})"] = multipletests(ps, method=metodo)[1]
+    out = pd.DataFrame(cols, index=[f"{c} → {e}" for c, e in pares]).round(4)
+    out["robusta"] = (out < 0.05).all(axis=1)
+    out["signif. en"] = (out.drop(columns="robusta") < 0.05).sum(axis=1).astype(str) \
+                        + f"/{len(rezagos)}"
+    out.index.name = "relación"
+    out.attrs["rezagos"] = list(rezagos)
+    out.attrs["n"] = len(d)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 3. Cointegración (Johansen)
 # ---------------------------------------------------------------------------

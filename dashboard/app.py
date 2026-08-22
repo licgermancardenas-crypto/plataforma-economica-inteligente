@@ -470,11 +470,18 @@ def pagina_explorador():
 # ---------------------------------------------------------------------------
 # Página: Econometría
 # ---------------------------------------------------------------------------
-# Cadena del relato: expansión monetaria → presión cambiaria → precios → actividad.
+# Cadena del relato: riesgo soberano → expansión monetaria → presión cambiaria →
+# precios → actividad.
 # tc_mayorista y no usd_oficial: el mayorista es el que enfrentan los importadores,
 # que es por donde entra el traslado a costos.
-CADENA = ["base_monetaria", "tc_mayorista", "ipc_general", "emae_desest"]
-ETIQUETA = {"base": "Base monetaria", "tc": "TC mayorista",
+# riesgo_pais va PRIMERO en el orden de Cholesky y la justificación es empírica, no
+# estética: en el test de Granger ninguna variable del sistema precede al riesgo país
+# (todos los p > 0,13), mientras que él sí precede a la actividad (p = 0,003). Es la
+# variable más exógena de las cinco en sentido de Granger. Aun así el supuesto pesa:
+# ver el panel de sensibilidad al orden.
+# ETIQUETA debe seguir el MISMO orden que CADENA: `zip(ETIQUETA, CADENA)` los aparea.
+CADENA = ["riesgo_pais", "base_monetaria", "tc_mayorista", "ipc_general", "emae_desest"]
+ETIQUETA = {"riesgo": "Riesgo país", "base": "Base monetaria", "tc": "TC mayorista",
             "ipc": "IPC", "emae": "EMAE (desest.)"}
 
 
@@ -495,6 +502,55 @@ def _econometria(anio: str):
     return pt, ph, nc, nc_now, float(d["infl"].iloc[-1])
 
 
+# VAR diario: el mensual no puede ver si el riesgo país anticipa al dólar en días.
+# La brecha entra como log(CCL/mayorista) y no como brecha % — así queda definida aun
+# con brecha negativa (2016-19 tuvo mínimos de −17%), y su diferencia es
+# Δlog(CCL) − Δlog(mayorista), que no es colineal con Δlog(mayorista).
+DIARIO = ["riesgo_pais", "tc_mayorista", "usd_ccl"]
+# Se estima POR RÉGIMEN, no pooleado: la brecha promedio va de 0,5% (sin cepo) a 82%
+# (cepo II). Son mecanismos distintos y poolearlos mezcla poblaciones.
+REGIMENES = {
+    "Cepo I (2013-15)":   ("2013-01-01", "2015-12-16"),
+    "Sin cepo (2016-19)": ("2015-12-17", "2019-09-01"),
+    "Cepo II (2019-23)":  ("2019-09-02", "2023-12-12"),
+    "Post-2023":          ("2023-12-13", None),
+}
+PARES_DIARIOS = [("riesgo", "tc"), ("riesgo", "brecha"), ("brecha", "riesgo"),
+                 ("tc", "riesgo"), ("brecha", "tc")]
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el VAR diario por régimen cambiario...")
+def _var_diario():
+    """
+    Granger diario por régimen, con robustez al rezago.
+
+    No se reporta el p-valor "al orden que elige el AIC" porque en esta muestra el
+    AIC no converge: elige 3, 15 o 14 según dónde se ponga el tope, mientras BIC
+    elige 0 y HQIC 1. Se barre una grilla de rezagos y sólo se llama hallazgo a lo
+    que aguanta toda la grilla.
+    """
+    from platec import econometria as ec
+
+    df = data.get_frame(DIARIO, freq="D").dropna()
+    v_all = pd.DataFrame({
+        "riesgo": np.log(df["riesgo_pais"]),
+        "tc":     np.log(df["tc_mayorista"]),
+        "brecha": np.log(df["usd_ccl"] / df["tc_mayorista"]),
+    }).diff().mul(100).dropna()
+
+    brecha_pct = (df["usd_ccl"] / df["tc_mayorista"] - 1) * 100
+    out = {}
+    for nombre, (desde, hasta) in REGIMENES.items():
+        v = v_all.loc[desde:hasta]
+        b = brecha_pct.loc[desde:hasta]
+        out[nombre] = {
+            "granger": ec.granger_robusto(v, PARES_DIARIOS),
+            "n": len(v), "desde": v.index[0], "hasta": v.index[-1],
+            "brecha_media": float(b.mean()), "brecha_sd": float(b.std()),
+        }
+    return out, len(v_all), v_all.index[0], v_all.index[-1]
+
+
 @st.cache_data(ttl=3600, show_spinner="Estimando el VAR de la cadena y sus bandas (bootstrap)...")
 def _cadena(anio: str):
     """VAR de 4 variables + pre-testing + bandas bootstrap + sensibilidad al orden."""
@@ -511,17 +567,31 @@ def _cadena(anio: str):
     var = ec.estimar_var(v, maxlags=6)
     banda = ec.irf_acumulada_bootstrap(v, "tc", "ipc", periodos=12, repl=500)
     ordenes = ec.sensibilidad_orden(v, "tc", "ipc", [
-        ["base", "tc", "ipc", "emae"],    # el supuesto del relato
-        ["base", "ipc", "tc", "emae"],    # precios antes que el TC
-        ["emae", "base", "tc", "ipc"],    # actividad primero
+        ["riesgo", "base", "tc", "ipc", "emae"],   # el supuesto del relato
+        ["riesgo", "base", "ipc", "tc", "emae"],   # precios antes que el TC
+        ["emae", "riesgo", "base", "tc", "ipc"],   # actividad primero
+    ])
+    # Canal del riesgo soberano. Se grafica contra la ACTIVIDAD y no contra el TC o el
+    # IPC porque es el único destino donde el efecto sobrevive al bootstrap: hacia el
+    # TC y el IPC las bandas contienen al cero en los 13 horizontes bajo cualquier
+    # ordenamiento. Ver docs/hallazgos_econometricos.md.
+    banda_riesgo = ec.irf_acumulada_bootstrap(v, "riesgo", "emae", periodos=12, repl=500)
+    ordenes_riesgo = ec.sensibilidad_orden(v, "riesgo", "emae", [
+        ["riesgo", "base", "tc", "ipc", "emae"],   # riesgo = condición financiera previa
+        ["base", "tc", "ipc", "emae", "riesgo"],   # riesgo = precio de activo, absorbe todo
+        ["base", "riesgo", "tc", "ipc", "emae"],
     ])
     granger = pd.DataFrame([
         {"relación": f"{ETIQUETA[a]} → {ETIQUETA[b]}",
          "p mínimo": float(g.p_valor.min()), "en rezago": int(g.p_valor.idxmin())}
-        for a, b in [("base", "tc"), ("tc", "ipc"), ("base", "ipc"), ("tc", "emae")]
+        for a, b in [("base", "tc"), ("tc", "ipc"), ("base", "ipc"), ("tc", "emae"),
+                     ("riesgo", "tc"), ("riesgo", "ipc"), ("riesgo", "emae"),
+                     ("tc", "riesgo")]
         for g in [ec.granger(v[a], v[b], maxlag=6, diferenciar=False)]
     ]).set_index("relación")
-    return diag_niv, diag_dif, joh, var, banda, ordenes, granger
+    return (diag_niv, diag_dif, joh, var, banda, ordenes, granger,
+            banda_riesgo, ordenes_riesgo)
+
 
 
 def pagina_econometria():
@@ -532,7 +602,8 @@ def pagina_econometria():
     anio = st.select_slider("Inicio de la muestra", ["2017", "2018", "2019", "2020"],
                             value="2017")
     pt, ph, nc, nc_now, infl_real = _econometria(anio)
-    diag_niv, diag_dif, joh, var, banda, ordenes, granger = _cadena(anio)
+    (diag_niv, diag_dif, joh, var, banda, ordenes, granger,
+     banda_riesgo, ordenes_riesgo) = _cadena(anio)
 
     seccion("Pre-testing: ¿está justificada esta especificación?")
     with st.container(border=True):
@@ -549,7 +620,7 @@ def pagina_econometria():
         rango = joh["rango_cointegracion"]
         if rango == 0:
             st.success(f"**Johansen: rango {rango}** — sin relaciones de cointegración "
-                       "entre las cuatro series en niveles, así que el VAR en "
+                       "entre las cinco series en niveles, así que el VAR en "
                        "diferencias es la especificación correcta (un VECM sobraría).")
         else:
             st.warning(f"**Johansen: rango {rango}** — hay cointegración: el VAR en "
@@ -606,13 +677,17 @@ def pagina_econometria():
             fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. (pp)")
             st.plotly_chart(fig, **ANCHO)
             rango_ord = ordenes.iloc[-1]
+            # El texto se deriva de los números: antes afirmaba un cambio de signo que
+            # con la cadena de 5 variables puede no producirse.
+            cambia_signo = rango_ord.min() < 0 < rango_ord.max()
+            detalle = ("hasta dar vuelta el signo" if cambia_signo
+                       else "sin llegar a cambiar de signo")
             st.caption(
                 f"Al horizonte final la respuesta va de **{rango_ord.min():+.1f}** a "
                 f"**{rango_ord.max():+.1f} pp** según qué variable se suponga más "
-                "exógena. Cholesky impone una cadena contemporánea que los datos no "
-                "identifican: si se asume que los precios se mueven antes que el dólar, "
-                "el signo se da vuelta. El orden del relato (dinero → dólar → precios → "
-                "actividad) es un supuesto económico, no un hallazgo.")
+                f"exógena, {detalle}. Cholesky impone una cadena contemporánea que los "
+                "datos no identifican. El orden del relato (riesgo → dinero → dólar → "
+                "precios → actividad) es un supuesto económico, no un hallazgo.")
 
     with st.container(border=True):
         st.markdown("**Causalidad de Granger en la cadena** (p-valor mínimo sobre 6 rezagos)")
@@ -621,6 +696,126 @@ def pagina_econometria():
         g["p mínimo"] = g["p mínimo"].round(4)
         st.dataframe(g, **ANCHO)
         st.caption("Granger es precedencia temporal, no causalidad estructural.")
+
+    st.divider()
+    seccion("Canal del riesgo soberano")
+    r1, r2 = st.columns([3, 2])
+    with r1:
+        with st.container(border=True):
+            st.subheader("Respuesta acumulada de la actividad")
+            x = list(banda_riesgo.puntual.index)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x + x[::-1],
+                                     y=list(banda_riesgo.superior) +
+                                       list(banda_riesgo.inferior)[::-1],
+                                     fill="toself", fillcolor=_rgba(COLOR["ambar"], 0.16),
+                                     line=dict(width=0), hoverinfo="skip",
+                                     name=f"IC {int((1-banda_riesgo.signif)*100)}%"))
+            fig.add_trace(go.Scatter(x=x, y=list(banda_riesgo.puntual), mode="lines",
+                                     line=dict(color=COLOR["ambar"], width=3),
+                                     name="respuesta acumulada"))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses tras el shock",
+                              yaxis_title="respuesta acum. del EMAE (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            h = banda_riesgo.puntual.index[-1]
+            n_sig = len(banda_riesgo.significativa_en)
+            st.caption(
+                f"Shock de 1 d.e. en el riesgo país. A {h} meses la actividad cae "
+                f"**{banda_riesgo.puntual[h]:.2f} pp** "
+                f"[{banda_riesgo.inferior[h]:.2f}, {banda_riesgo.superior[h]:.2f}], "
+                f"significativa en {n_sig} de {h+1} horizontes.")
+    with r2:
+        with st.container(border=True):
+            st.subheader("¿Y hacia el dólar y los precios?")
+            st.markdown(
+                "**Nada que se pueda sostener.** Hacia el TC mayorista y hacia el IPC "
+                "las bandas contienen al cero en los 13 horizontes, con cualquier "
+                "ordenamiento de Cholesky. Y el punto estimado hacia el TC se mueve de "
+                "**+1,7 pp** a **+0,6 pp** solo con mover el riesgo país del primer al "
+                "último lugar del orden: casi todo el efecto aparente era correlación "
+                "contemporánea, no dinámica.")
+            st.markdown(
+                "El canal que sí sobrevive es hacia la **actividad**, y sobrevive bien: "
+                "el signo es negativo y significativo bajo los tres ordenamientos, con "
+                "el punto entre −0,56 y −0,85 pp. Es el resultado esperable — el riesgo "
+                "soberano opera sobre el costo del crédito y la inversión, no sobre el "
+                "nivel de precios.")
+            st.caption("Contraintuitivo pero robusto: el riesgo país entró al modelo "
+                       "como candidato a explicar la dinámica cambiaria y terminó "
+                       "explicando la real.")
+
+    with st.container(border=True):
+        st.markdown("**Sensibilidad del canal riesgo → actividad al orden de Cholesky**")
+        fig = go.Figure()
+        trazos = ["solid", "dash", "dot"]
+        for i, col in enumerate(ordenes_riesgo.columns):
+            etiqueta = " → ".join(ETIQUETA.get(x, x) for x in col.split(" → "))
+            fig.add_trace(go.Scatter(x=list(ordenes_riesgo.index), y=ordenes_riesgo[col],
+                                     mode="lines", name=etiqueta,
+                                     line=dict(width=2.4, color=PALETA[i % len(PALETA)],
+                                               dash=trazos[i % len(trazos)])))
+        fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+        _estilo(fig, height=280, leyenda=True)
+        fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. del EMAE (pp)")
+        st.plotly_chart(fig, **ANCHO)
+        rr = ordenes_riesgo.iloc[-1]
+        st.caption(
+            f"Al horizonte final: de **{rr.min():+.2f}** a **{rr.max():+.2f} pp**. "
+            "A diferencia del canal cambiario, acá el signo no depende del supuesto de "
+            "identificación — que es lo que hace creíble al resultado.")
+
+    st.divider()
+    seccion("VAR diario: ¿el riesgo país anticipa al dólar en días?")
+    diario, n_tot, d0, d1 = _var_diario()
+    with st.container(border=True):
+        st.caption(
+            f"El VAR mensual colapsa el riesgo país a fin de mes y pierde la dinámica de "
+            f"alta frecuencia. Acá se estima en frecuencia diaria sobre "
+            f"`[riesgo país, TC mayorista, brecha]` — {n_tot:,} días con las tres series "
+            f"({d0:%m/%Y} a {d1:%m/%Y}) — y **por régimen cambiario**, porque la brecha "
+            "promedio va de 0,5% sin cepo a 82% bajo el cepo II: poolear mezcla "
+            "mecanismos distintos.")
+        reg = st.radio("Régimen", list(REGIMENES.keys()), horizontal=True,
+                       index=len(REGIMENES) - 1)
+        info = diario[reg]
+        m = st.columns(3)
+        m[0].metric("Días", f"{info['n']:,}")
+        m[1].metric("Brecha media", f"{info['brecha_media']:.1f}%")
+        m[2].metric("Desvío de la brecha", f"{info['brecha_sd']:.1f} pp")
+
+        g = info["granger"].copy()
+        etiq = {"riesgo": "Riesgo país", "tc": "TC mayorista", "brecha": "Brecha"}
+        g.index = [" → ".join(etiq.get(x, x) for x in i.split(" → ")) for i in g.index]
+        g["robusta"] = np.where(g["robusta"], "✅ robusta", "— frágil")
+        st.dataframe(g, **ANCHO)
+        st.caption(
+            "p-valores de un test de Wald conjunto (todos los rezagos de la causa a la "
+            "vez), ajustados por Holm dentro de cada rezago. Se barre la grilla porque "
+            "el AIC no converge en diario: elige 3, 15 o 14 según dónde se ponga el "
+            "tope, mientras BIC elige 0. **Sólo cuenta como hallazgo lo que aguanta la "
+            "grilla entera** — una relación que aparece en un rezago y desaparece en los "
+            "vecinos es ruido de selección.")
+
+    with st.container(border=True):
+        st.markdown("**Qué contesta esto**")
+        st.markdown(
+            "La hipótesis que motivó incorporar el riesgo país era que anticipa la "
+            "presión cambiaria. **No se sostiene, tampoco en diario.** `Riesgo país → "
+            "TC` no es robusta en ningún régimen: en post-2023 aparece significativa a "
+            "3 y 15 rezagos y desaparece a 1, 2, 5 y 10 — el patrón típico de un falso "
+            "positivo por selección de rezago.")
+        st.markdown(
+            "Lo que sí aguanta toda la grilla, en post-2023, es la dirección **contraria**: "
+            "`brecha → riesgo país` y `brecha → TC`, ambas 6/6. La brecha es el precio "
+            "de mercado que se forma libre y lidera; el riesgo soberano la sigue. "
+            "Coincide con lo que ya daba el Granger mensual desde que se incorporó la "
+            "serie.")
+        st.caption("Nota de frecuencia: diferenciar una serie diaria con feriados trata "
+                   "un salto de viernes a lunes como un período. Es práctica estándar en "
+                   "datos financieros diarios, pero introduce heterocedasticidad — otro "
+                   "motivo para leer los p-valores como orden de magnitud.")
 
     st.divider()
     seccion("Traslado a precios")
