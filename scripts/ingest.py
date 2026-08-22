@@ -123,11 +123,30 @@ def flag_para(reglas, series_id, indicator_id, obs_date) -> str:
 # ---------------------------------------------------------------------------
 # Ingesta
 # ---------------------------------------------------------------------------
+def _inicio_de_periodo(fecha: str, freq: str) -> str:
+    """
+    Normaliza obs_date al PRIMER día del período (convención de sql/schema.sql).
+
+    No todas las fuentes la respetan: datos.gob.ar devuelve 2026-07-01 para julio,
+    pero argentinadatos devuelve 2026-07-31. Sin normalizar, la misma serie mensual
+    cae en dos claves distintas y el remuestreo a 'MS' las desalinea. Se aplica en
+    la ingesta y no en cada fetcher para que la garantía valga para toda fuente
+    futura; para las que ya cumplen es un no-op.
+    """
+    if freq == "M":
+        return fecha[:8] + "01"
+    if freq == "Q":
+        mes = (int(fecha[5:7]) - 1) // 3 * 3 + 1
+        return f"{fecha[:4]}-{mes:02d}-01"
+    return fecha
+
+
 def ingerir_serie(con, s: dict, reglas) -> tuple[int, str]:
     fetcher = FETCHERS.get(s["source_id"])
     if fetcher is None:
         return 0, f"fuente '{s['source_id']}' sin fetcher (omitida)"
-    crudos = fetcher(s["external_id"])
+    crudos = [(_inicio_de_periodo(f, s["frequency"]), v)
+              for f, v in fetcher(s["external_id"])]
     scale = s["scale"]
     filas = []
     for fecha, valor in crudos:

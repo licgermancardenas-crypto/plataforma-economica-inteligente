@@ -936,13 +936,166 @@ def pagina_econometria():
 
 
 # ---------------------------------------------------------------------------
+# Página: Gobiernos
+# ---------------------------------------------------------------------------
+# Qué se puede mirar por mandato. `trans` decide la normalización, que es lo que
+# hace comparable un número de 2004 con uno de 2026: 'pct_pib_*' para lo que está
+# en pesos, None para lo que ya es un ratio, un índice o dólares.
+VISTAS = {
+    "Base monetaria (% PBI)":     ("base_monetaria",     "pct_pib_stock", "fin",       "% del PBI"),
+    "Reservas BCRA (M USD)":      ("reservas",           None,            "fin",       "millones USD"),
+    "Riesgo país (pb)":           ("riesgo_pais",        None,            "promedio",  "puntos básicos"),
+    "Resultado primario (% PBI)": ("resultado_primario", "pct_pib_flujo", "promedio",  "% del PBI"),
+    "Recaudación (% PBI)":        ("recaudacion_total",  "pct_pib_flujo", "promedio",  "% del PBI"),
+    "Saldo comercial (M USD)":    (None,                 "saldo",         "acumulado", "millones USD"),
+    "Tipo de cambio mayorista":   ("tc_mayorista",       None,            "var_anual", "ARS/USD"),
+    "EMAE (índice 2004=100)":     ("emae_original",      None,            "var_anual", "índice"),
+    "Desempleo (%)":              ("desempleo",          None,            "promedio",  "%"),
+    "Inflación mensual (%)":      ("inflacion_mensual",  None,            "promedio",  "% mensual"),
+}
+
+
+@st.cache_data(ttl=3600, show_spinner="Calculando comparación entre gobiernos...")
+def _gobiernos(vista: str):
+    from platec import gobiernos as gob
+    sid, trans, como, unidad = VISTAS[vista]
+    s = gob._serie_transformada(sid, trans)
+    return s, gob.por_gobierno(s, como=como), como, unidad
+
+
+@st.cache_data(ttl=3600, show_spinner="Armando la tabla comparativa...")
+def _tabla_gobiernos():
+    from platec import gobiernos as gob
+    return gob.tabla_comparativa(), gob.cobertura_matriz()
+
+
+def _bandas_gobierno(fig: go.Figure, y0: float, y1: float) -> go.Figure:
+    """Sombrea el fondo del gráfico por mandato y rotula cada banda."""
+    from platec import gobiernos as gob
+    for i, p in enumerate(gob.periodos()):
+        fig.add_vrect(x0=p.desde, x1=p.hasta, layer="below", line_width=0,
+                      fillcolor=PALETA[i % len(PALETA)], opacity=0.10)
+        fig.add_annotation(x=p.desde + (p.hasta - p.desde) / 2, y=y1, yanchor="bottom",
+                           text=p.nombre, showarrow=False, textangle=-35,
+                           font=dict(size=9, color="#94a3b8"))
+    return fig
+
+
+def pagina_gobiernos():
+    st.markdown(
+        '<div class="hero"><h1>🏛 Comparador de gobiernos</h1>'
+        '<p>Cómo varió cada indicador por mandato presidencial · '
+        'todo lo que está en pesos va normalizado por PBI</p></div>', unsafe_allow_html=True)
+
+    with st.container(border=True):
+        st.markdown("**Por qué no se comparan pesos contra pesos**")
+        st.markdown(
+            "La base monetaria de 2004 contra la de 2026 en pesos compara inflación, no "
+            "política monetaria. Acá todo lo que está en pesos se divide por el **PIB "
+            "nominal**: numerador y denominador quedan en pesos del mismo trimestre, así "
+            "que no hace falta ningún deflactor — y eso importa, porque el IPC oficial "
+            "de 2007-2015 no es creíble y deflactar con él haría que ese tramo se vea "
+            "artificialmente bien.")
+
+    vista = st.selectbox("Indicador", list(VISTAS.keys()))
+    s, resumen_gob, como, unidad = _gobiernos(vista)
+
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        with st.container(border=True):
+            st.subheader("Evolución, con los mandatos sombreados")
+            v = s.dropna()
+            fig = go.Figure(go.Scatter(x=v.index, y=v.values, mode="lines",
+                                       line=dict(color=COLOR["primario"], width=2),
+                                       name=vista))
+            _bandas_gobierno(fig, float(v.min()), float(v.max()))
+            _estilo(fig, height=400, leyenda=False)
+            fig.update_layout(yaxis_title=unidad, xaxis_title=None)
+            st.plotly_chart(fig, **ANCHO)
+            st.caption(f"{len(v):,} observaciones · {v.index[0]:%m/%Y} a {v.index[-1]:%m/%Y}. "
+                       "Los cortes son las fechas de traspaso de mando.")
+    with c2:
+        with st.container(border=True):
+            ETIQ_COMO = {"fin": "valor al final del mandato",
+                         "promedio": "promedio del mandato",
+                         "acumulado": "acumulado del mandato",
+                         "var_anual": "variación anualizada"}
+            st.subheader(f"Por gobierno — {ETIQ_COMO.get(como, como)}")
+            r = resumen_gob.dropna(subset=["valor"])
+            colores = [COLOR["verde"] if x >= 0 else COLOR["acento"] for x in r["valor"]]
+            fig = go.Figure(go.Bar(y=r.index, x=r["valor"], orientation="h",
+                                   marker_color=colores,
+                                   text=[f"{x:,.1f}" for x in r["valor"]],
+                                   textposition="auto"))
+            fig.add_vline(x=0, line=dict(color="#8895a7", width=1))
+            _estilo(fig, height=400, leyenda=False)
+            fig.update_layout(xaxis_title=("% anual" if como == "var_anual" else unidad),
+                              yaxis=dict(autorange="reversed"))
+            st.plotly_chart(fig, **ANCHO)
+            faltan = resumen_gob["valor"].isna().sum()
+            st.caption(
+                f"{faltan} de {len(resumen_gob)} mandatos sin dato suficiente para esta "
+                "serie (se exige cubrir el 60% del período; si no, se omite en vez de "
+                "promediar una punta)." if faltan else
+                "Todos los mandatos tienen cobertura suficiente.")
+
+    with st.container(border=True):
+        st.markdown("**Detalle del indicador por mandato**")
+        d = resumen_gob.copy()
+        d["valor"] = d["valor"].round(2)
+        d["cobertura"] = (d["cobertura"] * 100).round(0).astype(int).astype(str) + "%"
+        d = d.rename(columns={"valor": unidad, "meses": "meses con dato"})
+        st.dataframe(d[[unidad, "cobertura", "meses con dato", "desde", "hasta"]], **ANCHO)
+
+    st.divider()
+    seccion("Tabla comparativa completa")
+    tabla, cob = _tabla_gobiernos()
+    with st.container(border=True):
+        st.dataframe(
+            tabla.style.format("{:,.1f}", na_rep="—")
+                 .background_gradient(cmap="RdYlGn", axis=1)
+                 .set_properties(**{"font-size": "12px"}),
+            **ANCHO)
+        st.caption(
+            "Color por fila: verde = valor más alto de esa métrica, rojo = más bajo. "
+            "**Ojo con la lectura**: alto no es bueno en todas las filas — en riesgo "
+            "país o en desempleo el verde es lo malo. El gradiente ordena, no juzga.")
+
+    with st.container(border=True):
+        st.markdown("**Cobertura de datos** — qué fracción de cada mandato cubre cada serie")
+        st.dataframe(
+            cob.style.format("{:.0%}", na_rep="—")
+               .background_gradient(cmap="Blues", vmin=0, vmax=1)
+               .set_properties(**{"font-size": "12px"}),
+            **ANCHO)
+        st.caption(
+            "Las celdas vacías de la tabla de arriba se explican acá. El riesgo país "
+            "arranca en 1999, el PIB —y con él todo lo normalizado— en 2004, y el "
+            "resultado primario en 2016: **ninguna comparación desde Menem hasta hoy "
+            "es posible para todos los indicadores a la vez**. La inflación tiene un "
+            "hueco en CFK I y II porque el IPC de 2007-2015 está marcado INTERVENIDO "
+            "y se excluye por defecto.")
+
+    with st.container(border=True):
+        st.markdown("**Lo que falta**")
+        st.markdown(
+            "**Deuda pública.** No está: el Ministerio de Economía la publica en "
+            "informes y planillas, no como serie en la API. Lo más cercano disponible "
+            "es `intereses_netos` (2016+), que mide la carga del servicio, no el stock. "
+            "Incorporarla implica parsear las planillas de la Secretaría de Finanzas.")
+        st.caption("Otras ausencias: balanza de pagos, deuda externa privada, "
+                   "y el gasto público desagregado antes de 2016.")
+
+
+# ---------------------------------------------------------------------------
 # Navegación
 # ---------------------------------------------------------------------------
 st.sidebar.markdown("# 📊 Plataforma Económica")
 st.sidebar.caption("Monitoreo · Análisis · Econometría")
 st.sidebar.divider()
-pagina = st.sidebar.radio("Navegación", ["🏠  Cockpit", "🔎  Explorador", "🧮  Econometría"],
-                          label_visibility="collapsed")
+pagina = st.sidebar.radio(
+    "Navegación", ["🏠  Cockpit", "🔎  Explorador", "🏛  Gobiernos", "🧮  Econometría"],
+    label_visibility="collapsed")
 st.sidebar.divider()
 st.sidebar.caption(f"📅 Datos hasta {_fecha_datos()}")
 if st.sidebar.button("🔄 Actualizar desde las APIs", **ANCHO):
@@ -956,5 +1109,7 @@ if "Cockpit" in pagina:
     pagina_cockpit()
 elif "Explorador" in pagina:
     pagina_explorador()
+elif "Gobiernos" in pagina:
+    pagina_gobiernos()
 else:
     pagina_econometria()

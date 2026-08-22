@@ -53,6 +53,9 @@ INDICATORS = [
      "Reservas internacionales del BCRA y base monetaria."),
     ("empleo",       "Mercado laboral (EPH)",        "empleo",
      "Tasa de desocupación nacional (EPH, trimestral)."),
+    ("pib",          "Producto Interno Bruto",       "actividad",
+     "PIB nominal trimestral (INDEC). Denominador para comparar magnitudes entre "
+     "períodos sin depender de un deflactor de precios."),
     ("externo",      "Sector externo (comercio)",    "externo",
      "Exportaciones e importaciones totales (INDEC). El saldo comercial se deriva."),
     ("riesgo",       "Riesgo soberano",              "financiero",
@@ -132,6 +135,22 @@ SERIES = [
      "Riesgo país (EMBI+ Argentina)", "puntos básicos", "D", "none", "level", 1.0, None,
      "Única serie de la base que cubre 2001, 2018 y 2019: sirve para identificar "
      "quiebres estructurales fuera de la muestra corta post-2016."),
+
+    # PIB nominal: el denominador que permite comparar entre gobiernos. Expresar en
+    # % del PBI evita el problema del deflactor —numerador y denominador están en
+    # pesos del mismo trimestre— sin depender de un índice de precios creíble.
+    ("pib_corriente", "pib", "datosgob_series", "9.2_PPC_2004_T_22",
+     "PIB a precios corrientes", "millones ARS", "Q", "none", "level", 1.0, None,
+     "Trimestral desde 2004: acota a ese año el arranque de todo lo normalizado por PBI."),
+
+    # Inflación mensual larga (1943+). NO es un empalme corregido: reproduce los
+    # índices oficiales, incluido el tramo del INDEC intervenido, donde marca 8,4%
+    # para 2007 o 10,7% para 2013. La regla de quality_periods del indicador
+    # `inflacion` la marca INTERVENIDO entre 2007-01 y 2015-12 y `get_series` la
+    # excluye por defecto: la serie queda con un hueco explícito en vez de mentir.
+    ("inflacion_mensual", "inflacion", "argentinadatos", "finanzas/indices/inflacion",
+     "Inflación mensual (serie larga)", "% mensual", "M", "none", "rate", 1.0, None,
+     "Desde 1943. Hueco 2007-2015 por intervención del INDEC (ver quality_periods)."),
 ]
 
 QUALITY_FLAGS = [
