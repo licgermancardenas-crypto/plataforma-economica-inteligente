@@ -7,9 +7,9 @@ del catálogo (`series`) desde su API de origen, normalizando el valor
 (crudo * series.scale) y aplicando las banderas de calidad de `quality_periods`.
 
 Tres patrones de fuente:
-  - indec_datosgob : GET /series?ids=... (una request, orden ascendente)
+  - datosgob_series : GET /series?ids=... (una request, orden ascendente)
   - bcra           : GET /Monetarias/{id} paginado por offset (orden descendente)
-  - argentinadatos : GET /cotizaciones/dolares/{casa} (histórico completo)
+  - argentinadatos : GET /{path} (el external_id ES el path; histórico completo)
   - dolarapi       : se omite (solo valor actual; es fallback tiempo real)
 
 Idempotente: usa INSERT OR REPLACE sobre (series_id, obs_date), así que se puede
@@ -38,7 +38,7 @@ UA = {"User-Agent": "plataforma-economica/0.1"}
 
 BCRA_BASE = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias"
 DATOSGOB_BASE = "https://apis.datos.gob.ar/series/api/series"
-ARGDATOS_BASE = "https://api.argentinadatos.com/v1/cotizaciones/dolares"
+ARGDATOS_BASE = "https://api.argentinadatos.com/v1"
 
 
 # ---------------------------------------------------------------------------
@@ -77,18 +77,24 @@ def fetch_bcra(external_id: str) -> list[tuple[str, float]]:
 
 
 def fetch_argentinadatos(external_id: str) -> list[tuple[str, float]]:
+    """
+    external_id es el PATH bajo /v1 ('cotizaciones/dolares/blue',
+    'finanzas/indices/riesgo-pais'), porque la API sirve familias distintas bajo
+    la misma base. El campo del valor cambia con la familia: las cotizaciones
+    traen 'venta' y los índices traen 'valor'.
+    """
     url = f"{ARGDATOS_BASE}/{external_id}"
     j = requests.get(url, headers=UA, timeout=TIMEOUT).json()
     out = []
     for d in j:
-        v = d.get("venta")
+        v = d["venta"] if "venta" in d else d.get("valor")
         if v is not None:
             out.append((d["fecha"][:10], float(v)))
     return out
 
 
 FETCHERS = {
-    "indec_datosgob": fetch_datosgob,
+    "datosgob_series": fetch_datosgob,
     "bcra": fetch_bcra,
     "argentinadatos": fetch_argentinadatos,
 }

@@ -4,8 +4,9 @@ Plataforma Económica Inteligente — Dashboard (Streamlit).
 Cockpit de indicadores núcleo + explorador con filtros dinámicos e insights
 automáticos + panel de econometría. Se apoya en el núcleo analítico `platec`.
 
-Estética: SaaS moderno — fondo gris, tarjetas blancas redondeadas, KPI cards con
-ícono + pill de variación + sparkline, gauges, sidebar oscuro (solo CSS).
+Estética: SaaS oscuro glassmorphic — fondo navy con glow azul, tarjetas de vidrio
+(blur + borde sutil), acento azul eléctrico, KPI cards con ícono + pill de variación
++ sparkline, gauges y sidebar oscuro. Tema base en .streamlit/config.toml.
 
 Ejecutar local:   streamlit run dashboard/app.py
 Deploy:           Streamlit Community Cloud (apunta a este archivo).
@@ -65,6 +66,11 @@ def catalogo() -> pd.DataFrame:
     return data.catalogo()
 
 
+@st.cache_data(ttl=3600)
+def indicadores() -> pd.DataFrame:
+    return data.indicadores()
+
+
 def _fecha_datos() -> str:
     """Última observación efectivamente cargada (no la fecha de hoy)."""
     f = bootstrap.estado_datos()["ultima_obs"]
@@ -74,13 +80,23 @@ def _fecha_datos() -> str:
 # ---------------------------------------------------------------------------
 # Paleta + estilo
 # ---------------------------------------------------------------------------
-COLOR = {"primario": "#1f4e79", "acento": "#ef6c57", "teal": "#17a2b8",
-         "verde": "#1e9e5a", "gris": "#8895a7", "rojo": "#d64545",
-         "violeta": "#7d5ba6", "ambar": "#e0a800"}
+# Paleta para tema oscuro: tonos brillantes que rinden sobre navy (#0b1220).
+# `primario` = azul eléctrico (acento de marca); `acento` = coral cálido de
+# contraste. Semántica alza/baja en rojo/verde legibles sobre fondo oscuro.
+COLOR = {"primario": "#2b6bff", "acento": "#fb7185", "teal": "#22d3ee",
+         "verde": "#34d399", "gris": "#94a3b8", "rojo": "#f87171",
+         "violeta": "#a78bfa", "ambar": "#fbbf24"}
 PALETA = [COLOR["primario"], COLOR["acento"], COLOR["teal"],
           COLOR["violeta"], COLOR["ambar"], COLOR["verde"]]
-TONO_COLOR = {"alza": "#d64545", "baja": "#1e9e5a", "alerta": "#e0a800", "neutro": "#8895a7"}
+TONO_COLOR = {"alza": "#f87171", "baja": "#34d399", "alerta": "#fbbf24", "neutro": "#94a3b8"}
 TONO_ICONO = {"alza": "🔺", "baja": "🔻", "alerta": "⚠️", "neutro": "•"}
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """`#rrggbb` → `rgba(r,g,b,alpha)` para rellenos translúcidos bajo cada serie."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
 
 # `use_container_width` quedó deprecado en Streamlit 1.49 a favor de `width`, y su
 # fecha de remoción ya pasó (31/12/2025): el día que lo saquen, cada gráfico del
@@ -92,63 +108,101 @@ ANCHO = ({"width": "stretch"}
 
 _CSS = """
 <style>
-  /* Fondo gris de la app y tarjetas blancas */
-  .stApp {background: #eef1f6;}
+  :root {
+      --bg:#0b1220; --surface:rgba(255,255,255,.045); --surface-2:rgba(255,255,255,.07);
+      --border:rgba(255,255,255,.09); --border-hi:rgba(43,107,255,.55);
+      --fg:#f1f5f9; --fg-muted:#94a3b8; --fg-dim:#64748b; --accent:#2b6bff;
+  }
+  /* Fondo oscuro con glow radial azul (mood de las referencias) */
+  .stApp {
+      background:
+        radial-gradient(1100px 520px at 12% -8%, rgba(43,107,255,.20), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, rgba(167,139,250,.12), transparent 55%),
+        #0b1220;
+      background-attachment: fixed;
+  }
   [data-testid="stHeader"] {background: transparent;}
   .block-container {padding-top: 1.6rem; padding-bottom: 2.5rem;
       padding-left: 2.2rem; padding-right: 2.2rem;}
 
-  /* Cada st.container(border=True) es una tarjeta */
+  /* Cada st.container(border=True) es una tarjeta de vidrio */
   [data-testid="stVerticalBlockBorderWrapper"] {
-      background: #ffffff; border: 1px solid #e7ecf2 !important;
-      border-radius: 16px; padding: 6px 6px;
-      box-shadow: 0 1px 3px rgba(20,40,80,.06), 0 6px 20px rgba(20,40,80,.05);
+      background: var(--surface); border: 1px solid var(--border) !important;
+      border-radius: 18px; padding: 6px 6px;
+      backdrop-filter: blur(14px) saturate(140%);
+      -webkit-backdrop-filter: blur(14px) saturate(140%);
+      box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 10px 30px rgba(0,0,0,.35);
+      transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+  }
+  [data-testid="stVerticalBlockBorderWrapper"]:hover {
+      border-color: var(--border-hi) !important;
+      box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 14px 40px rgba(0,0,0,.45),
+                  0 0 0 1px rgba(43,107,255,.10);
   }
   /* Métricas dentro de tarjeta: sin doble fondo */
   [data-testid="stMetric"] {background: transparent; padding: 6px 10px;}
-  [data-testid="stMetricLabel"] p {font-size:.82rem; color:#5a6b80; font-weight:600;}
-  [data-testid="stMetricValue"] {font-size:1.6rem; color:#14243f;}
+  [data-testid="stMetricLabel"] p {font-size:.82rem; color:var(--fg-muted); font-weight:600;}
+  [data-testid="stMetricValue"] {font-size:1.6rem; color:var(--fg);}
 
   /* KPI card custom */
   .kpi-head {display:flex; align-items:center; gap:14px; padding:6px 6px 0 6px;}
   .kpi-icon {width:46px; height:46px; border-radius:12px; display:flex;
-      align-items:center; justify-content:center; font-size:1.35rem; flex:0 0 auto;}
-  .kpi-label {font-size:.82rem; color:#5a6b80; font-weight:600; margin-bottom:1px;}
-  .kpi-value {font-size:1.7rem; font-weight:700; color:#14243f; line-height:1.1;}
+      align-items:center; justify-content:center; font-size:1.35rem; flex:0 0 auto;
+      border:1px solid var(--border);}
+  .kpi-label {font-size:.82rem; color:var(--fg-muted); font-weight:600; margin-bottom:1px;}
+  .kpi-value {font-size:1.7rem; font-weight:700; color:var(--fg); line-height:1.1;
+      letter-spacing:-.01em;}
   .pill {display:inline-block; font-size:.74rem; font-weight:700; padding:2px 8px;
       border-radius:999px; margin-top:3px;}
 
   /* Insights */
-  .insight-card {background:#f7f9fc; border-left:4px solid #1f4e79; border-radius:8px;
-      padding:9px 13px; margin-bottom:7px; font-size:.9rem; line-height:1.4; color:#233;}
+  .insight-card {background:var(--surface); border-left:4px solid var(--accent);
+      border:1px solid var(--border); border-radius:10px;
+      padding:9px 13px; margin-bottom:7px; font-size:.9rem; line-height:1.4; color:#cbd5e1;}
 
   /* Hero */
-  .hero {background: linear-gradient(100deg,#1f4e79 0%,#2c6ba0 60%,#17a2b8 130%);
-      color:#fff; padding:22px 28px; border-radius:16px; margin-bottom:20px;
-      box-shadow:0 8px 24px rgba(31,78,121,.25);}
-  .hero h1 {color:#fff; font-size:1.65rem; margin:0 0 4px 0;}
-  .hero p {color:#dce7f2; margin:0; font-size:.95rem;}
+  .hero {background: linear-gradient(105deg,#12203c 0%,#1b2f5e 45%,#3b2a6b 130%);
+      border:1px solid var(--border); color:#fff; padding:22px 28px; border-radius:18px;
+      margin-bottom:20px; position:relative; overflow:hidden;
+      box-shadow:0 12px 40px rgba(0,0,0,.45);}
+  .hero::after {content:""; position:absolute; inset:0;
+      background: radial-gradient(600px 200px at 90% -40%, rgba(43,107,255,.35), transparent 60%);
+      pointer-events:none;}
+  .hero h1 {color:#fff; font-size:1.65rem; margin:0 0 4px 0; letter-spacing:-.01em;}
+  .hero p {color:#c3cfe6; margin:0; font-size:.95rem;}
 
   /* Títulos de sección */
-  .section-title {font-size:.78rem; font-weight:700; letter-spacing:.08em;
-      text-transform:uppercase; color:#8895a7; margin:8px 0 2px 4px;}
+  .section-title {font-size:.78rem; font-weight:700; letter-spacing:.10em;
+      text-transform:uppercase; color:var(--fg-dim); margin:8px 0 2px 4px;}
 
-  /* Sidebar oscuro */
-  section[data-testid="stSidebar"] {background:#14243f;}
-  section[data-testid="stSidebar"] * {color:#e7edf5;}
+  /* Sidebar oscuro glass */
+  section[data-testid="stSidebar"] {
+      background: linear-gradient(180deg,#0a0f1c 0%,#0b1220 100%);
+      border-right:1px solid var(--border);}
   section[data-testid="stSidebar"] h1 {color:#fff; font-size:1.15rem;}
-  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {color:#9fb2cc;}
+  section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {color:var(--fg-muted);}
   section[data-testid="stSidebar"] div[role="radiogroup"] {gap:4px;}
   section[data-testid="stSidebar"] div[role="radiogroup"] label {
-      padding:9px 12px; border-radius:10px; margin:1px 0; transition:background .15s;
-      cursor:pointer;}
-  section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {background:#1e3355;}
-  section[data-testid="stSidebar"] div[role="radiogroup"] label p {font-weight:600;}
+      padding:9px 12px; border-radius:10px; margin:1px 0; cursor:pointer;
+      border:1px solid transparent; transition:background .15s ease, border-color .15s ease;}
+  section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+      background:rgba(255,255,255,.05); border-color:var(--border);}
+  section[data-testid="stSidebar"] div[role="radiogroup"] label p {font-weight:600; color:#cbd5e1;}
   section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-      background:#ef6c57;}
+      background:linear-gradient(90deg,rgba(43,107,255,.90),rgba(43,107,255,.65));
+      border-color:var(--border-hi);
+      box-shadow:0 4px 14px rgba(43,107,255,.35);}
   section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
       color:#fff;}
   section[data-testid="stSidebar"] div[role="radiogroup"] input {display:none;}
+
+  /* Accesibilidad: foco visible para navegación por teclado */
+  :focus-visible {outline:2px solid var(--accent) !important; outline-offset:2px;
+      border-radius:6px;}
+  /* Respetar preferencia de movimiento reducido */
+  @media (prefers-reduced-motion: reduce) {
+      * {transition:none !important; animation:none !important;}
+  }
 </style>
 """
 st.markdown(_CSS, unsafe_allow_html=True)
@@ -159,17 +213,20 @@ st.markdown(_CSS, unsafe_allow_html=True)
 # ---------------------------------------------------------------------------
 def _estilo(fig: go.Figure, height: int = 400, leyenda: bool = True) -> go.Figure:
     fig.update_layout(
-        template="plotly_white", height=height, hovermode="x unified",
-        margin=dict(t=48, b=24, l=8, r=8), font=dict(family="sans-serif", size=13),
+        template="plotly_dark", height=height, hovermode="x unified",
+        margin=dict(t=48, b=24, l=8, r=8),
+        font=dict(family="sans-serif", size=13, color="#cbd5e1"),
         legend=dict(orientation="h", y=-0.18, x=0) if leyenda else dict(),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-    fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(gridcolor="#eef2f6", zeroline=False)
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(bgcolor="#0e1526", bordercolor="rgba(255,255,255,.12)",
+                        font=dict(color="#f1f5f9")))
+    fig.update_xaxes(showgrid=False, color="#94a3b8", linecolor="rgba(255,255,255,.10)")
+    fig.update_yaxes(gridcolor="rgba(255,255,255,.06)", zeroline=False, color="#94a3b8")
     return fig
 
 
 def _titulo(fig: go.Figure, texto: str) -> go.Figure:
-    fig.update_layout(title=dict(text=texto, font=dict(size=15, color=COLOR["primario"])))
+    fig.update_layout(title=dict(text=texto, font=dict(size=15, color="#e8edf6")))
     return fig
 
 
@@ -182,9 +239,11 @@ def _selector_rango(fig: go.Figure, slider: bool = True) -> go.Figure:
                      dict(count=3, label="3A", step="year", stepmode="backward"),
                      dict(count=5, label="5A", step="year", stepmode="backward"),
                      dict(step="all", label="Todo")],
-            bgcolor="#eef2f6", activecolor=COLOR["primario"], x=0.5, y=1.16,
-            font=dict(size=11)),
-        rangeslider=dict(visible=slider, thickness=0.05))
+            bgcolor="rgba(255,255,255,.06)", activecolor=COLOR["primario"],
+            bordercolor="rgba(255,255,255,.12)", font=dict(size=11, color="#cbd5e1"),
+            x=0.5, y=1.16),
+        rangeslider=dict(visible=slider, thickness=0.05,
+                         bgcolor="rgba(255,255,255,.03)"))
     return fig
 
 
@@ -198,7 +257,7 @@ def linea(series: dict[str, pd.Series], titulo: str, ytitulo: str,
             x=s.index, y=s.values, name=nombre, mode="lines",
             line=dict(width=2.4, color=color, shape="hv" if step else "linear"),
             fill="tozeroy" if area and len(series) == 1 else None,
-            fillcolor="rgba(31,78,121,0.08)" if area else None))
+            fillcolor=_rgba(color, 0.12) if area else None))
     _estilo(fig, leyenda=len(series) > 1)
     _titulo(fig, titulo)
     fig.update_layout(yaxis_title=ytitulo)
@@ -224,7 +283,7 @@ def sparkline(s: pd.Series, color: str) -> go.Figure:
     s = s.dropna()
     fig = go.Figure(go.Scatter(x=s.index, y=s.values, mode="lines",
                                line=dict(width=2, color=color),
-                               fill="tozeroy", fillcolor="rgba(31,78,121,0.06)"))
+                               fill="tozeroy", fillcolor=_rgba(color, 0.14)))
     fig.update_layout(height=56, margin=dict(t=0, b=0, l=0, r=0),
                       xaxis=dict(visible=False), yaxis=dict(visible=False),
                       showlegend=False, plot_bgcolor="rgba(0,0,0,0)",
@@ -235,14 +294,16 @@ def sparkline(s: pd.Series, color: str) -> go.Figure:
 def gauge(valor: float, titulo: str, rango: list, color: str,
           suffix: str = "%") -> go.Figure:
     fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=valor, number=dict(suffix=suffix, font=dict(size=26)),
-        title=dict(text=titulo, font=dict(size=13, color="#5a6b80")),
-        gauge=dict(axis=dict(range=rango, tickcolor="#8895a7"),
+        mode="gauge+number", value=valor,
+        number=dict(suffix=suffix, font=dict(size=26, color="#f1f5f9")),
+        title=dict(text=titulo, font=dict(size=13, color="#94a3b8")),
+        gauge=dict(axis=dict(range=rango, tickcolor="#64748b",
+                             tickfont=dict(color="#94a3b8")),
                    bar=dict(color=color, thickness=0.28),
-                   bgcolor="#eef2f6", borderwidth=0,
-                   steps=[dict(range=[rango[0], rango[1]], color="#f4f7fb")])))
+                   bgcolor="rgba(255,255,255,.05)", borderwidth=0,
+                   steps=[dict(range=[rango[0], rango[1]], color="rgba(255,255,255,.03)")])))
     fig.update_layout(height=210, margin=dict(t=40, b=10, l=20, r=20),
-                      paper_bgcolor="rgba(0,0,0,0)")
+                      paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#cbd5e1"))
     return fig
 
 
@@ -251,10 +312,11 @@ def gauge(valor: float, titulo: str, rango: list, color: str,
 # ---------------------------------------------------------------------------
 def _pill(delta_num: float, texto: str, malo: bool | None) -> str:
     if malo is None:
-        bg, fg = "#eef1f6", "#5a6b80"
+        bg, fg = "rgba(148,163,184,.16)", "#cbd5e1"
     else:
         es_bueno = (delta_num > 0 and not malo) or (delta_num < 0 and malo)
-        bg, fg = ("#e7f6ec", "#1e7e46") if es_bueno else ("#fdeaea", "#c0392b")
+        bg, fg = (("rgba(52,211,153,.16)", "#6ee7b7") if es_bueno
+                  else ("rgba(248,113,113,.16)", "#fca5a5"))
     flecha = "▲" if delta_num > 0 else ("▼" if delta_num < 0 else "▬")
     return f'<span class="pill" style="background:{bg};color:{fg}">{flecha} {texto}</span>'
 
@@ -399,11 +461,11 @@ def pagina_explorador():
         'los insights se recalculan sobre lo que ves</p></div>', unsafe_allow_html=True)
     cat = catalogo()
     nombres = cat.set_index("series_id")["name"].to_dict()
-    grupos = {
-        "Inflación (IPC)": "inflacion", "Tipo de cambio y brecha": "tipo_cambio",
-        "Tasa de referencia": "tasa", "Actividad (EMAE)": "actividad",
-        "Reservas y base monetaria": "monetario", "Desempleo (EPH)": "empleo",
-    }
+    # Los grupos salen de la tabla `indicators`: sumar un indicador al catálogo
+    # alcanza para que aparezca acá. Se omiten los que todavía no tienen series.
+    con_series = set(cat.indicator_id)
+    grupos = {r["name"]: r["indicator_id"] for _, r in indicadores().iterrows()
+              if r["indicator_id"] in con_series}
 
     with st.container(border=True):
         top = st.columns([2, 2])
@@ -465,6 +527,21 @@ def pagina_explorador():
 # ---------------------------------------------------------------------------
 # Página: Econometría
 # ---------------------------------------------------------------------------
+# Cadena del relato: riesgo soberano → expansión monetaria → presión cambiaria →
+# precios → actividad.
+# tc_mayorista y no usd_oficial: el mayorista es el que enfrentan los importadores,
+# que es por donde entra el traslado a costos.
+# riesgo_pais va PRIMERO en el orden de Cholesky y la justificación es empírica, no
+# estética: en el test de Granger ninguna variable del sistema precede al riesgo país
+# (todos los p > 0,13), mientras que él sí precede a la actividad (p = 0,003). Es la
+# variable más exógena de las cinco en sentido de Granger. Aun así el supuesto pesa:
+# ver el panel de sensibilidad al orden.
+# ETIQUETA debe seguir el MISMO orden que CADENA: `zip(ETIQUETA, CADENA)` los aparea.
+CADENA = ["riesgo_pais", "base_monetaria", "tc_mayorista", "ipc_general", "emae_desest"]
+ETIQUETA = {"riesgo": "Riesgo país", "base": "Base monetaria", "tc": "TC mayorista",
+            "ipc": "IPC", "emae": "EMAE (desest.)"}
+
+
 @st.cache_data(ttl=3600, show_spinner="Estimando modelos (VAR, pass-through, nowcast)...")
 def _econometria(anio: str):
     from platec import econometria as ec   # statsmodels: import caro, solo acá
@@ -474,16 +551,103 @@ def _econometria(anio: str):
                         start=f"{anio}-01-01")
     ipc, tc = df["ipc_general"].dropna(), df["usd_oficial"].dropna()
     pt = ec.pass_through(tc, ipc, lags=6)
-    v = pd.DataFrame({"deval": np.log(tc).diff() * 100,
-                      "infl": np.log(ipc).diff() * 100}).dropna()
-    var = ec.estimar_var(v, maxlags=8)
-    irf = ec.irf(var, "deval", "infl", periodos=12)
     infl_q = ipc.resample("QS").last().pct_change() * 100
     ph = ec.curva_phillips(infl_q, data.get_series("desempleo"), aumentada=True)
     d = nowcast.construir_features(start=f"{anio}-01-01")
     nc = nowcast.evaluar_walk_forward(d, min_train=48)
     nc_now = nowcast.nowcast_actual(d)
-    return pt, irf, var, ph, nc, nc_now, float(d["infl"].iloc[-1])
+    return pt, ph, nc, nc_now, float(d["infl"].iloc[-1])
+
+
+# VAR diario: el mensual no puede ver si el riesgo país anticipa al dólar en días.
+# La brecha entra como log(CCL/mayorista) y no como brecha % — así queda definida aun
+# con brecha negativa (2016-19 tuvo mínimos de −17%), y su diferencia es
+# Δlog(CCL) − Δlog(mayorista), que no es colineal con Δlog(mayorista).
+DIARIO = ["riesgo_pais", "tc_mayorista", "usd_ccl"]
+# Se estima POR RÉGIMEN, no pooleado: la brecha promedio va de 0,5% (sin cepo) a 82%
+# (cepo II). Son mecanismos distintos y poolearlos mezcla poblaciones.
+REGIMENES = {
+    "Cepo I (2013-15)":   ("2013-01-01", "2015-12-16"),
+    "Sin cepo (2016-19)": ("2015-12-17", "2019-09-01"),
+    "Cepo II (2019-23)":  ("2019-09-02", "2023-12-12"),
+    "Post-2023":          ("2023-12-13", None),
+}
+PARES_DIARIOS = [("riesgo", "tc"), ("riesgo", "brecha"), ("brecha", "riesgo"),
+                 ("tc", "riesgo"), ("brecha", "tc")]
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el VAR diario por régimen cambiario...")
+def _var_diario():
+    """
+    Granger diario por régimen, con robustez al rezago.
+
+    No se reporta el p-valor "al orden que elige el AIC" porque en esta muestra el
+    AIC no converge: elige 3, 15 o 14 según dónde se ponga el tope, mientras BIC
+    elige 0 y HQIC 1. Se barre una grilla de rezagos y sólo se llama hallazgo a lo
+    que aguanta toda la grilla.
+    """
+    from platec import econometria as ec
+
+    df = data.get_frame(DIARIO, freq="D").dropna()
+    v_all = pd.DataFrame({
+        "riesgo": np.log(df["riesgo_pais"]),
+        "tc":     np.log(df["tc_mayorista"]),
+        "brecha": np.log(df["usd_ccl"] / df["tc_mayorista"]),
+    }).diff().mul(100).dropna()
+
+    brecha_pct = (df["usd_ccl"] / df["tc_mayorista"] - 1) * 100
+    out = {}
+    for nombre, (desde, hasta) in REGIMENES.items():
+        v = v_all.loc[desde:hasta]
+        b = brecha_pct.loc[desde:hasta]
+        out[nombre] = {
+            "granger": ec.granger_robusto(v, PARES_DIARIOS),
+            "n": len(v), "desde": v.index[0], "hasta": v.index[-1],
+            "brecha_media": float(b.mean()), "brecha_sd": float(b.std()),
+        }
+    return out, len(v_all), v_all.index[0], v_all.index[-1]
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el VAR de la cadena y sus bandas (bootstrap)...")
+def _cadena(anio: str):
+    """VAR de 4 variables + pre-testing + bandas bootstrap + sensibilidad al orden."""
+    from platec import econometria as ec
+
+    df = data.get_frame(CADENA, freq="M", how="last", start=f"{anio}-01-01")
+    niveles = pd.DataFrame({k: np.log(df[c]) for k, c in
+                            zip(ETIQUETA, CADENA)}).dropna()
+    v = niveles.diff().mul(100).dropna()          # variaciones % mensuales (log-dif)
+
+    diag_niv = ec.diagnostico(niveles)
+    diag_dif = ec.diagnostico(v)
+    joh = ec.cointegracion_johansen(niveles)
+    var = ec.estimar_var(v, maxlags=6)
+    banda = ec.irf_acumulada_bootstrap(v, "tc", "ipc", periodos=12, repl=500)
+    ordenes = ec.sensibilidad_orden(v, "tc", "ipc", [
+        ["riesgo", "base", "tc", "ipc", "emae"],   # el supuesto del relato
+        ["riesgo", "base", "ipc", "tc", "emae"],   # precios antes que el TC
+        ["emae", "riesgo", "base", "tc", "ipc"],   # actividad primero
+    ])
+    # Canal del riesgo soberano. Se grafica contra la ACTIVIDAD y no contra el TC o el
+    # IPC porque es el único destino donde el efecto sobrevive al bootstrap: hacia el
+    # TC y el IPC las bandas contienen al cero en los 13 horizontes bajo cualquier
+    # ordenamiento. Ver docs/hallazgos_econometricos.md.
+    banda_riesgo = ec.irf_acumulada_bootstrap(v, "riesgo", "emae", periodos=12, repl=500)
+    ordenes_riesgo = ec.sensibilidad_orden(v, "riesgo", "emae", [
+        ["riesgo", "base", "tc", "ipc", "emae"],   # riesgo = condición financiera previa
+        ["base", "tc", "ipc", "emae", "riesgo"],   # riesgo = precio de activo, absorbe todo
+        ["base", "riesgo", "tc", "ipc", "emae"],
+    ])
+    granger = pd.DataFrame([
+        {"relación": f"{ETIQUETA[a]} → {ETIQUETA[b]}",
+         "p mínimo": float(g.p_valor.min()), "en rezago": int(g.p_valor.idxmin())}
+        for a, b in [("base", "tc"), ("tc", "ipc"), ("base", "ipc"), ("tc", "emae"),
+                     ("riesgo", "tc"), ("riesgo", "ipc"), ("riesgo", "emae"),
+                     ("tc", "riesgo")]
+        for g in [ec.granger(v[a], v[b], maxlag=6, diferenciar=False)]
+    ]).set_index("relación")
+    return (diag_niv, diag_dif, joh, var, banda, ordenes, granger,
+            banda_riesgo, ordenes_riesgo)
 
 
 def pagina_econometria():
@@ -493,8 +657,227 @@ def pagina_econometria():
         'detalle en docs/hallazgos_econometricos.md</p></div>', unsafe_allow_html=True)
     anio = st.select_slider("Inicio de la muestra", ["2017", "2018", "2019", "2020"],
                             value="2017")
-    pt, irf, var, ph, nc, nc_now, infl_real = _econometria(anio)
+    pt, ph, nc, nc_now, infl_real = _econometria(anio)
+    (diag_niv, diag_dif, joh, var, banda, ordenes, granger,
+     banda_riesgo, ordenes_riesgo) = _cadena(anio)
 
+    seccion("Pre-testing: ¿está justificada esta especificación?")
+    with st.container(border=True):
+        st.caption("Nada de VAR sin verificar antes el orden de integración y la "
+                   "cointegración. Esto se corría por consola; ahora se publica junto "
+                   "al resultado que justifica.")
+        d1, d2 = st.columns(2)
+        with d1:
+            st.markdown("**Niveles (logs)**")
+            st.dataframe(diag_niv, **ANCHO)
+        with d2:
+            st.markdown("**Variaciones mensuales (log-dif)**")
+            st.dataframe(diag_dif, **ANCHO)
+        rango = joh["rango_cointegracion"]
+        if rango == 0:
+            st.success(f"**Johansen: rango {rango}** — sin relaciones de cointegración "
+                       "entre las cinco series en niveles, así que el VAR en "
+                       "diferencias es la especificación correcta (un VECM sobraría).")
+        else:
+            st.warning(f"**Johansen: rango {rango}** — hay cointegración: el VAR en "
+                       "diferencias está mal especificado y corresponde un VECM. "
+                       "Leer las IRF de abajo con esa reserva.")
+        ambiguas = diag_dif.index[diag_dif["veredicto"] != "estacionaria (I(0))"].tolist()
+        if ambiguas:
+            st.warning("Estacionariedad no concluyente en diferencias para: "
+                       f"**{', '.join(ETIQUETA.get(a, a) for a in ambiguas)}**. "
+                       "En Argentina la inflación mensual es tan persistente que el ADF "
+                       "no logra rechazar la raíz unitaria; el VAR sigue siendo la mejor "
+                       "opción disponible, pero los errores estándar quedan optimistas.")
+
+    st.divider()
+    seccion("Cadena monetaria: shock cambiario → precios")
+    c0a, c0b = st.columns([3, 2])
+    with c0a:
+        with st.container(border=True):
+            st.subheader("Respuesta acumulada del IPC, con incertidumbre")
+            x = list(banda.puntual.index)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x + x[::-1],
+                                     y=list(banda.superior) + list(banda.inferior)[::-1],
+                                     fill="toself", fillcolor=_rgba(COLOR["acento"], 0.18),
+                                     line=dict(width=0), hoverinfo="skip",
+                                     name=f"IC {int((1-banda.signif)*100)}%"))
+            fig.add_trace(go.Scatter(x=x, y=list(banda.puntual), mode="lines",
+                                     line=dict(color=COLOR["acento"], width=3),
+                                     name="respuesta acumulada"))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses tras el shock",
+                              yaxis_title="respuesta acum. del IPC (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            h = banda.puntual.index[-1]
+            st.caption(
+                f"VAR({banda.p}) sobre {len(banda.orden)} variables, n={banda.n}. "
+                f"A {h} meses: **{banda.puntual[h]:.1f} pp** "
+                f"[{banda.inferior[h]:.1f}, {banda.superior[h]:.1f}]. "
+                f"Bootstrap de residuos, {banda.repl} réplicas — las bandas Monte Carlo "
+                "de statsmodels devuelven réplicas idénticas en esta versión y colapsan "
+                "sobre el punto, así que el intervalo se calcula acá.")
+    with c0b:
+        with st.container(border=True):
+            st.subheader("Sensibilidad al orden de Cholesky")
+            fig = go.Figure()
+            # Trazo distinto por ordenamiento además del color: en escala de grises
+            # o con daltonismo, las tres curvas siguen siendo distinguibles (auditoría).
+            trazos = ["solid", "dash", "dot"]
+            for i, col in enumerate(ordenes.columns):
+                etiqueta = " → ".join(ETIQUETA.get(t, t) for t in col.split(" → "))
+                fig.add_trace(go.Scatter(x=list(ordenes.index), y=ordenes[col],
+                                         mode="lines", name=etiqueta,
+                                         line=dict(width=2.4, color=PALETA[i % len(PALETA)],
+                                                   dash=trazos[i % len(trazos)])))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            rango_ord = ordenes.iloc[-1]
+            # El texto se deriva de los números: antes afirmaba un cambio de signo que
+            # con la cadena de 5 variables puede no producirse.
+            cambia_signo = rango_ord.min() < 0 < rango_ord.max()
+            detalle = ("hasta dar vuelta el signo" if cambia_signo
+                       else "sin llegar a cambiar de signo")
+            st.caption(
+                f"Al horizonte final la respuesta va de **{rango_ord.min():+.1f}** a "
+                f"**{rango_ord.max():+.1f} pp** según qué variable se suponga más "
+                f"exógena, {detalle}. Cholesky impone una cadena contemporánea que los "
+                "datos no identifican. El orden del relato (riesgo → dinero → dólar → "
+                "precios → actividad) es un supuesto económico, no un hallazgo.")
+
+    with st.container(border=True):
+        st.markdown("**Causalidad de Granger en la cadena** (p-valor mínimo sobre 6 rezagos)")
+        g = granger.copy()
+        g["conclusión"] = np.where(g["p mínimo"] < 0.05, "✅ precede", "— no precede")
+        g["p mínimo"] = g["p mínimo"].round(4)
+        st.dataframe(g, **ANCHO)
+        st.caption("Granger es precedencia temporal, no causalidad estructural.")
+
+    st.divider()
+    seccion("Canal del riesgo soberano")
+    r1, r2 = st.columns([3, 2])
+    with r1:
+        with st.container(border=True):
+            st.subheader("Respuesta acumulada de la actividad")
+            x = list(banda_riesgo.puntual.index)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=x + x[::-1],
+                                     y=list(banda_riesgo.superior) +
+                                       list(banda_riesgo.inferior)[::-1],
+                                     fill="toself", fillcolor=_rgba(COLOR["ambar"], 0.16),
+                                     line=dict(width=0), hoverinfo="skip",
+                                     name=f"IC {int((1-banda_riesgo.signif)*100)}%"))
+            fig.add_trace(go.Scatter(x=x, y=list(banda_riesgo.puntual), mode="lines",
+                                     line=dict(color=COLOR["ambar"], width=3),
+                                     name="respuesta acumulada"))
+            fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+            _estilo(fig, height=340, leyenda=True)
+            fig.update_layout(xaxis_title="meses tras el shock",
+                              yaxis_title="respuesta acum. del EMAE (pp)")
+            st.plotly_chart(fig, **ANCHO)
+            h = banda_riesgo.puntual.index[-1]
+            n_sig = len(banda_riesgo.significativa_en)
+            st.caption(
+                f"Shock de 1 d.e. en el riesgo país. A {h} meses la actividad cae "
+                f"**{banda_riesgo.puntual[h]:.2f} pp** "
+                f"[{banda_riesgo.inferior[h]:.2f}, {banda_riesgo.superior[h]:.2f}], "
+                f"significativa en {n_sig} de {h+1} horizontes.")
+    with r2:
+        with st.container(border=True):
+            st.subheader("¿Y hacia el dólar y los precios?")
+            st.markdown(
+                "**Nada que se pueda sostener.** Hacia el TC mayorista y hacia el IPC "
+                "las bandas contienen al cero en los 13 horizontes, con cualquier "
+                "ordenamiento de Cholesky. Y el punto estimado hacia el TC se mueve de "
+                "**+1,7 pp** a **+0,6 pp** solo con mover el riesgo país del primer al "
+                "último lugar del orden: casi todo el efecto aparente era correlación "
+                "contemporánea, no dinámica.")
+            st.markdown(
+                "El canal que sí sobrevive es hacia la **actividad**, y sobrevive bien: "
+                "el signo es negativo y significativo bajo los tres ordenamientos, con "
+                "el punto entre −0,56 y −0,85 pp. Es el resultado esperable — el riesgo "
+                "soberano opera sobre el costo del crédito y la inversión, no sobre el "
+                "nivel de precios.")
+            st.caption("Contraintuitivo pero robusto: el riesgo país entró al modelo "
+                       "como candidato a explicar la dinámica cambiaria y terminó "
+                       "explicando la real.")
+
+    with st.container(border=True):
+        st.markdown("**Sensibilidad del canal riesgo → actividad al orden de Cholesky**")
+        fig = go.Figure()
+        trazos = ["solid", "dash", "dot"]
+        for i, col in enumerate(ordenes_riesgo.columns):
+            etiqueta = " → ".join(ETIQUETA.get(x, x) for x in col.split(" → "))
+            fig.add_trace(go.Scatter(x=list(ordenes_riesgo.index), y=ordenes_riesgo[col],
+                                     mode="lines", name=etiqueta,
+                                     line=dict(width=2.4, color=PALETA[i % len(PALETA)],
+                                               dash=trazos[i % len(trazos)])))
+        fig.add_hline(y=0, line=dict(color="#8895a7", width=1, dash="dot"))
+        _estilo(fig, height=280, leyenda=True)
+        fig.update_layout(xaxis_title="meses", yaxis_title="respuesta acum. del EMAE (pp)")
+        st.plotly_chart(fig, **ANCHO)
+        rr = ordenes_riesgo.iloc[-1]
+        st.caption(
+            f"Al horizonte final: de **{rr.min():+.2f}** a **{rr.max():+.2f} pp**. "
+            "A diferencia del canal cambiario, acá el signo no depende del supuesto de "
+            "identificación — que es lo que hace creíble al resultado.")
+
+    st.divider()
+    seccion("VAR diario: ¿el riesgo país anticipa al dólar en días?")
+    diario, n_tot, d0, d1 = _var_diario()
+    with st.container(border=True):
+        st.caption(
+            f"El VAR mensual colapsa el riesgo país a fin de mes y pierde la dinámica de "
+            f"alta frecuencia. Acá se estima en frecuencia diaria sobre "
+            f"`[riesgo país, TC mayorista, brecha]` — {n_tot:,} días con las tres series "
+            f"({d0:%m/%Y} a {d1:%m/%Y}) — y **por régimen cambiario**, porque la brecha "
+            "promedio va de 0,5% sin cepo a 82% bajo el cepo II: poolear mezcla "
+            "mecanismos distintos.")
+        reg = st.radio("Régimen", list(REGIMENES.keys()), horizontal=True,
+                       index=len(REGIMENES) - 1)
+        info = diario[reg]
+        m = st.columns(3)
+        m[0].metric("Días", f"{info['n']:,}")
+        m[1].metric("Brecha media", f"{info['brecha_media']:.1f}%")
+        m[2].metric("Desvío de la brecha", f"{info['brecha_sd']:.1f} pp")
+
+        g = info["granger"].copy()
+        etiq = {"riesgo": "Riesgo país", "tc": "TC mayorista", "brecha": "Brecha"}
+        g.index = [" → ".join(etiq.get(x, x) for x in i.split(" → ")) for i in g.index]
+        g["robusta"] = np.where(g["robusta"], "✅ robusta", "— frágil")
+        st.dataframe(g, **ANCHO)
+        st.caption(
+            "p-valores de un test de Wald conjunto (todos los rezagos de la causa a la "
+            "vez), ajustados por Holm dentro de cada rezago. Se barre la grilla porque "
+            "el AIC no converge en diario: elige 3, 15 o 14 según dónde se ponga el "
+            "tope, mientras BIC elige 0. **Sólo cuenta como hallazgo lo que aguanta la "
+            "grilla entera** — una relación que aparece en un rezago y desaparece en los "
+            "vecinos es ruido de selección.")
+
+    with st.container(border=True):
+        st.markdown("**Qué contesta esto**")
+        st.markdown(
+            "La hipótesis que motivó incorporar el riesgo país era que anticipa la "
+            "presión cambiaria. **No se sostiene, tampoco en diario.** `Riesgo país → "
+            "TC` no es robusta en ningún régimen: en post-2023 aparece significativa a "
+            "3 y 15 rezagos y desaparece a 1, 2, 5 y 10 — el patrón típico de un falso "
+            "positivo por selección de rezago.")
+        st.markdown(
+            "Lo que sí aguanta toda la grilla, en post-2023, es la dirección **contraria**: "
+            "`brecha → riesgo país` y `brecha → TC`, ambas 6/6. La brecha es el precio "
+            "de mercado que se forma libre y lidera; el riesgo soberano la sigue. "
+            "Coincide con lo que ya daba el Granger mensual desde que se incorporó la "
+            "serie.")
+        st.caption("Nota de frecuencia: diferenciar una serie diaria con feriados trata "
+                   "un salto de viernes a lunes como un período. Es práctica estándar en "
+                   "datos financieros diarios, pero introduce heterocedasticidad — otro "
+                   "motivo para leer los p-valores como orden de magnitud.")
+
+    st.divider()
     seccion("Traslado a precios")
     c1, c2 = st.columns(2)
     with c1:
@@ -504,7 +887,7 @@ def pagina_econometria():
             fig = go.Figure(go.Scatter(x=list(acum.index), y=acum.values * 100,
                                        mode="lines+markers",
                                        line=dict(color=COLOR["primario"], width=3),
-                                       fill="tozeroy", fillcolor="rgba(31,78,121,0.08)"))
+                                       fill="tozeroy", fillcolor=_rgba(COLOR["primario"], 0.12)))
             _estilo(fig, height=320, leyenda=False)
             fig.update_layout(xaxis_title="meses tras la devaluación",
                               yaxis_title="% trasladado a precios")
@@ -513,15 +896,21 @@ def pagina_econometria():
                       help=f"R²={pt.r2}, n={pt.n}")
     with c2:
         with st.container(border=True):
-            st.subheader("Impulso-respuesta (VAR)")
-            fig = go.Figure(go.Scatter(x=list(irf.index), y=irf["acumulada"], mode="lines",
-                                       line=dict(color=COLOR["acento"], width=3),
-                                       fill="tozeroy", fillcolor="rgba(239,108,87,0.10)"))
-            _estilo(fig, height=320, leyenda=False)
-            fig.update_layout(xaxis_title="meses",
-                              yaxis_title="respuesta acum. inflación (pp)")
-            st.plotly_chart(fig, **ANCHO)
-            st.caption(f"{var}")
+            st.subheader("Lectura conjunta")
+            st.metric("Traslado a 6 meses (regresión de rezagos distribuidos)",
+                      f"{pt.acumulado.iloc[-1]*100:.0f}%", help=f"R²={pt.r2}, n={pt.n}")
+            h = banda.puntual.index[-1]
+            st.metric(f"Respuesta acumulada del IPC a {h} meses (VAR)",
+                      f"{banda.puntual[h]:.1f} pp",
+                      f"IC 95%: {banda.inferior[h]:.1f} a {banda.superior[h]:.1f}",
+                      delta_color="off")
+            st.caption(
+                f"{var}. Las dos rutas coinciden en que el traslado existe y es rápido "
+                "en los primeros meses, pero el intervalo del VAR es ancho: con ~110 "
+                "observaciones mensuales el dato no alcanza para afirmar una magnitud "
+                "precisa. La regresión de rezagos distribuidos da un número más "
+                "cerrado porque impone que el dólar es exógeno — supuesto que el VAR "
+                "no necesita hacer.")
 
     st.divider()
     seccion("Actividad y proyección")

@@ -44,6 +44,12 @@ def catalogo() -> pd.DataFrame:
         return pd.read_sql("SELECT * FROM series ORDER BY indicator_id, series_id", con)
 
 
+def indicadores() -> pd.DataFrame:
+    """Catálogo de indicadores conceptuales como DataFrame."""
+    with _connect() as con:
+        return pd.read_sql("SELECT * FROM indicators ORDER BY indicator_id", con)
+
+
 def get_series(series_id: str, start: str | None = None, end: str | None = None,
                exclude_flags: tuple[str, ...] = ("INTERVENIDO",)) -> pd.Series:
     """

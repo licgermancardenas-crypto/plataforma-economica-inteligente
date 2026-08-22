@@ -16,6 +16,8 @@ venv/
 
 # --- Entorno / editores / herramientas locales ---
 .claude/
+.agents/
+skills-lock.json
 .env
 .streamlit/secrets.toml
 .DS_Store
