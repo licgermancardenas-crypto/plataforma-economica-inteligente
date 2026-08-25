@@ -1,12 +1,12 @@
 {
-  "generado": "2026-08-24T12:53:09Z",
-  "observaciones": 50802,
-  "ultima_obs": "2026-08-23",
+  "generado": "2026-08-25T12:50:43Z",
+  "observaciones": 50810,
+  "ultima_obs": "2026-08-24",
   "series": {
     "base_monetaria": {
-      "obs": 7540,
+      "obs": 7541,
       "desde": "1996-01-02",
-      "hasta": "2026-08-19"
+      "hasta": "2026-08-20"
     },
     "desempleo": {
       "obs": 91,
@@ -54,9 +54,9 @@
       "hasta": "2026-07-01"
     },
     "reservas": {
-      "obs": 7539,
+      "obs": 7540,
       "desde": "1996-01-03",
-      "hasta": "2026-08-19"
+      "hasta": "2026-08-20"
     },
     "resultado_financiero": {
       "obs": 126,
@@ -74,34 +74,34 @@
       "hasta": "2026-08-21"
     },
     "tamar_priv": {
-      "obs": 453,
+      "obs": 454,
       "desde": "2024-10-01",
-      "hasta": "2026-08-20"
-    },
-    "tc_mayorista": {
-      "obs": 5996,
-      "desde": "2002-03-04",
       "hasta": "2026-08-21"
     },
+    "tc_mayorista": {
+      "obs": 5997,
+      "desde": "2002-03-04",
+      "hasta": "2026-08-24"
+    },
     "usd_blue": {
-      "obs": 5712,
+      "obs": 5713,
       "desde": "2011-01-03",
-      "hasta": "2026-08-23"
+      "hasta": "2026-08-24"
     },
     "usd_ccl": {
-      "obs": 4982,
+      "obs": 4983,
       "desde": "2013-01-02",
-      "hasta": "2026-08-23"
+      "hasta": "2026-08-24"
     },
     "usd_mep": {
-      "obs": 2856,
+      "obs": 2857,
       "desde": "2018-10-29",
-      "hasta": "2026-08-23"
+      "hasta": "2026-08-24"
     },
     "usd_oficial": {
-      "obs": 5712,
+      "obs": 5713,
       "desde": "2011-01-03",
-      "hasta": "2026-08-23"
+      "hasta": "2026-08-24"
     }
   }
 }
