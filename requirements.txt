@@ -24,7 +24,10 @@ plotly>=5.22,<7
 scikit-learn>=1.5,<2        # ElasticNet para nowcasting de inflación
 
 # --- IA (etapa 8) ---
-# cliente del proveedor de LLM que se elija
+# Cliente del proveedor de LLM. Es una dependencia OPCIONAL de hecho: platec.narrador
+# importa el SDK de forma diferida y `disponible()` devuelve False si falta, así que el
+# dashboard levanta igual sin él. Está acá porque el deploy sí lo quiere.
+anthropic>=1.0,<2
 
 # --- Tests ---
 pytest>=8.0,<9

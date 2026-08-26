@@ -30,16 +30,20 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
   nueve mandatos (1995→hoy) y comparación de indicadores entre ellos, normalizando por
   **PIB nominal** o pasando a USD para no comparar pesos de 2004 contra pesos de 2026.
   Ver [«Comparar gobiernos sin mentir»](#comparar-gobiernos-sin-mentir).
-- ⬜ Etapa 8 — Capa de IA (LLM vía API).
+- ✅ **Etapa 8 — Capa de IA (`platec/narrador.py`).** Redacción automática de lecturas
+  con LLM vía API, con **verificación numérica**: el modelo no calcula, recibe un dossier
+  cerrado de hechos ya computados y cada número de su texto se contrasta contra ese
+  dossier antes de mostrarse. Sin API key el dashboard funciona igual.
+  Ver [`docs/capa_ia.md`](docs/capa_ia.md).
 
 ## Estructura
 
 ```
-platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gobiernos)
+platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gobiernos, narrador)
 dashboard/  app Streamlit (app.py) + bootstrap de datos
 scripts/    utilidades ejecutables (validate_sources, init_db, ingest, snapshot, analisis)
 sql/        DDL del esquema (schema.sql)
-docs/       documentación técnica (fuentes validadas, hallazgos econométricos)
+docs/       documentación técnica (fuentes validadas, hallazgos econométricos, capa de IA)
 data/       snapshot.csv.gz (versionado) + plataforma.db (generada, ignorada)
 ```
 
@@ -50,7 +54,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (73 casos)
+python3 -m pytest                        # suite de tests (110 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -66,8 +70,10 @@ python3 scripts/snapshot.py export       # congela el histórico para versionarl
 y `nowcast` (validados contra series sintéticas de propiedades conocidas y contra la base
 real), `data` (acceso y alineación de frecuencias), `insights` (lecturas automáticas) y
 `gobiernos` (periodización, normalización por PBI y cobertura, con regresión anclada a las
-magnitudes reales del PIB en dólares). Los tests de integración se saltan solos si
-`data/plataforma.db` no existe.
+magnitudes reales del PIB en dólares) y `narrador` (verificación numérica, caché y
+reintentos, con el cliente del LLM inyectado como doble: ningún test toca la red ni
+necesita credenciales). Los tests de integración se saltan solos si `data/plataforma.db`
+no existe.
 
 ### Comparar gobiernos sin mentir
 `platec/gobiernos.py` responde «¿cómo varió X en los últimos gobiernos?» esquivando las dos
@@ -94,6 +100,28 @@ Dos detalles que muerden:
 
 Los nueve períodos agrupan la crisis 2001-2003 en un solo tramo: son cinco presidencias en
 dieciocho meses y separarlas daría períodos de días, sin sentido estadístico.
+
+### La capa de IA no puede inventar un número
+`platec/narrador.py` redacta las lecturas con un LLM, pero el modelo **no calcula**: recibe
+un `Dossier` cerrado —los hechos que ya computaron `insights`, `stats` y `gobiernos`, con
+sus unidades y sus advertencias— y sólo escribe prosa sobre eso. Después, `verificar()`
+extrae todos los números del texto y los contrasta contra el dossier. Se marcan como
+huérfanos los inventados, los **reescalados** («45.511 millones» → «45,5 mil millones») y
+los **derivados** (restar dos hechos autorizados para obtener un tercero): reescalar y
+derivar son cuentas, y las cuentas son del lado de Python. Los años son la única excepción.
+
+Si aparece un huérfano se reintenta señalándole al modelo *cuál* número está de más; si
+insiste, la lectura se muestra marcada en vez de ocultarse.
+
+El determinismo **no** viene de bajar la temperatura —los modelos actuales de la familia
+Opus rechazan `temperature` con un 400— sino de cachear por hash del dossier: mismos datos,
+mismo texto. Sin `ANTHROPIC_API_KEY` el módulo se aparta y el dashboard sigue mostrando el
+panel de lectura automática determinístico. Detalle completo en
+[`docs/capa_ia.md`](docs/capa_ia.md).
+
+```bash
+export ANTHROPIC_API_KEY="..."   # local; en Streamlit Cloud va como secret del deploy
+```
 
 ### Datos: snapshot versionado
 El histórico viaja en el repo como `data/snapshot.csv.gz` (~245 KB, 51k observaciones).

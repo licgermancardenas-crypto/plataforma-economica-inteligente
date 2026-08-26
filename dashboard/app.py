@@ -14,6 +14,7 @@ Deploy:           Streamlit Community Cloud (apunta a este archivo).
 from __future__ import annotations
 
 import inspect
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -47,6 +48,7 @@ def _boot():
 _boot()
 from platec import data, stats  # noqa: E402  (import tras asegurar la DB)
 from platec import insights as ins  # noqa: E402
+from platec import narrador as nar  # noqa: E402
 # `econometria` (statsmodels) y `nowcast` (scikit-learn) se importan dentro de la
 # página que los usa: son ~2 s de import y el cockpit no los necesita.
 
@@ -159,6 +161,15 @@ _CSS = """
   .insight-card {background:var(--surface); border-left:4px solid var(--accent);
       border:1px solid var(--border); border-radius:10px;
       padding:9px 13px; margin-bottom:7px; font-size:.9rem; line-height:1.4; color:#cbd5e1;}
+
+  /* Lectura redactada (capa de IA) */
+  .narrador-card {background:linear-gradient(180deg, rgba(43,107,255,.10), rgba(43,107,255,.03));
+      border:1px solid rgba(43,107,255,.28); border-radius:12px;
+      padding:14px 16px; font-size:.93rem; line-height:1.55; color:#dbe4f3;}
+  .narrador-card.sin-verificar {background:linear-gradient(180deg, rgba(251,191,36,.10), rgba(251,191,36,.03));
+      border-color:rgba(251,191,36,.40);}
+  .narrador-meta {font-size:.72rem; color:var(--fg-muted); margin-top:8px;
+      letter-spacing:.04em; text-transform:uppercase;}
 
   /* Hero */
   .hero {background: linear-gradient(105deg,#12203c 0%,#1b2f5e 45%,#3b2a6b 130%);
@@ -351,6 +362,98 @@ def panel_insights(items: list[dict], titulo: str = "Lectura automática"):
             f'{icono} {it["texto"]}</div>', unsafe_allow_html=True)
 
 
+# ---------------------------------------------------------------------------
+# Capa de IA: lectura redactada, verificada contra los números de la plataforma
+# ---------------------------------------------------------------------------
+def _credenciales_llm() -> bool:
+    """
+    Pasa la credencial de `st.secrets` al entorno, que es donde la busca platec.narrador.
+    El módulo no conoce Streamlit a propósito: se usa igual desde un script o un notebook.
+    """
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return True
+    try:
+        clave = st.secrets.get("ANTHROPIC_API_KEY")
+    except Exception:
+        clave = None                      # sin secrets.toml, st.secrets levanta excepción
+    if clave:
+        os.environ["ANTHROPIC_API_KEY"] = str(clave)
+        return True
+    return False
+
+
+def _render_lectura(lec, dossier, clave: str):
+    css = "narrador-card" + ("" if lec.verificado else " sin-verificar")
+    st.markdown(f'<div class="{css}">{lec.texto}</div>', unsafe_allow_html=True)
+
+    if lec.verificado:
+        estado = "✓ todos los números verificados contra el dossier"
+    else:
+        estado = ("⚠ sin verificar — estos números no están en el dossier: "
+                  + ", ".join(lec.numeros_huerfanos))
+    origen = "del caché" if lec.desde_cache else f"generada ahora · {lec.intentos} intento(s)"
+    st.markdown(f'<div class="narrador-meta">{estado} · {origen}</div>',
+                unsafe_allow_html=True)
+
+    if not lec.verificado:
+        st.warning(
+            "El modelo escribió al menos un número que la plataforma no calculó. El texto "
+            "se muestra igual, marcado: ocultarlo sería peor que exhibirlo. No uses esos "
+            "valores sin comprobarlos en el dossier.")
+
+    with st.expander("Ver el dossier que recibió el modelo"):
+        st.caption("Esto es TODO lo que el modelo tuvo a la vista. No calcula: redacta.")
+        st.code(dossier.a_texto(), language="markdown")
+        if st.button("🔄 Rehacer la lectura", key=f"rehacer_{clave}"):
+            with st.spinner("Redactando..."):
+                try:
+                    nar.redactar(dossier, forzar=True)
+                except RuntimeError as e:
+                    st.warning(f"No se pudo rehacer: {e}")
+                    return
+            st.rerun()
+
+
+def panel_narrador(construir_dossier, clave: str, titulo: str = "Lectura del analista"):
+    """
+    Panel de la capa de IA. Dos decisiones deliberadas:
+
+    - **No llama al modelo en cada rerun.** Streamlit reejecuta el script ante cualquier
+      interacción; llamar ahí sería pagar una redacción por cada click. Si ya hay una
+      lectura cacheada para ESTOS datos se muestra sola; si no, hay que pedirla.
+    - **Sin credenciales no aparece un botón muerto**, sino la explicación de qué falta.
+      El panel determinístico de al lado sigue funcionando igual: la IA es un agregado.
+    """
+    st.markdown(f"**✍️ {titulo}**")
+    try:
+        dossier = construir_dossier()
+    except (KeyError, ValueError) as e:
+        st.caption(f"Sin dossier para esta selección: {e}")
+        return
+
+    lec = nar.cacheada(dossier)
+    if lec is None:
+        if not _credenciales_llm():
+            st.caption(
+                "Capa de IA sin configurar. Definí `ANTHROPIC_API_KEY` como secret del "
+                "deploy o como variable de entorno. El panel de lectura automática no la "
+                "necesita: sigue funcionando sin API.")
+            return
+        st.caption(
+            "El modelo redacta sobre los hechos que ya calculó la plataforma — no calcula "
+            "nada por su cuenta — y cada número del texto se verifica contra el dossier "
+            "antes de mostrarse.")
+        if not st.button("✍️ Redactar lectura", key=f"nar_{clave}", **ANCHO):
+            return
+        with st.spinner("Redactando..."):
+            try:
+                lec = nar.redactar(dossier)
+            except RuntimeError as e:
+                st.warning(f"No se pudo redactar: {e}")
+                return
+    _render_lectura(lec, dossier, clave)
+
+
 def tabla(s: pd.Series, nombre: str):
     df = s.rename(nombre).reset_index()
     df.columns = ["Fecha", nombre]
@@ -518,6 +621,12 @@ def pagina_explorador():
                 es_tasa = cat.set_index("series_id").loc[elegidas[0], "kind"] == "rate"
                 panel_insights(ins.insights_serie(principal, es_tasa=es_tasa,
                                                   nombre=nombres.get(elegidas[0], "")))
+            with st.container(border=True):
+                # Sobre la serie CRUDA, no sobre `principal`: los filtros de la UI
+                # (transformación, media móvil, recorte) cambian lo que se grafica, y
+                # redactar sobre eso obligaría a explicarle al modelo cada filtro.
+                panel_narrador(lambda: nar.dossier_serie(elegidas[0]),
+                               clave=f"serie_{elegidas[0]}")
     with tab:
         sid = st.selectbox("Serie", elegidas, format_func=lambda x: nombres.get(x, x))
         s2, _ = _aplicar_filtros(serie(sid), transform, mm, False, desde)
@@ -1046,6 +1155,13 @@ def pagina_gobiernos():
         d["cobertura"] = (d["cobertura"] * 100).round(0).astype(int).astype(str) + "%"
         d = d.rename(columns={"valor": unidad, "meses": "meses con dato"})
         st.dataframe(d[[unidad, "cobertura", "meses con dato", "desde", "hasta"]], **ANCHO)
+
+    with st.container(border=True):
+        # Se le pasa el resumen YA calculado, no el nombre de la métrica: así el
+        # dossier describe exactamente los números del gráfico de arriba.
+        panel_narrador(lambda: nar.dossier_gobierno(vista, resumen_gob, unidad, como),
+                       clave=f"gob_{vista}",
+                       titulo=f"Lectura comparativa — {vista}")
 
     st.divider()
     seccion("Tabla comparativa completa")

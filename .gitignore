@@ -6,6 +6,11 @@ data/raw/
 !data/snapshot.csv.gz
 !data/snapshot_meta.json
 
+# Lecturas redactadas por la capa de IA: caché local, reconstruible llamando al
+# modelo de nuevo. No se versiona (es texto generado, y cuesta plata regenerarlo,
+# pero versionarlo mezclaría salida del modelo con código).
+data/narrador/
+
 # --- Python ---
 __pycache__/
 *.py[cod]
