@@ -1,6 +1,6 @@
 {
-  "generado": "2026-08-22T06:40:15Z",
-  "observaciones": 50793,
+  "generado": "2026-08-22T06:59:33Z",
+  "observaciones": 51883,
   "ultima_obs": "2026-08-21",
   "series": {
     "base_monetaria": {
@@ -33,6 +33,11 @@
       "desde": "1992-01-01",
       "hasta": "2026-06-01"
     },
+    "inflacion_mensual": {
+      "obs": 1001,
+      "desde": "1943-03-01",
+      "hasta": "2026-07-01"
+    },
     "intereses_netos": {
       "obs": 126,
       "desde": "2016-01-01",
@@ -47,6 +52,11 @@
       "obs": 116,
       "desde": "2016-12-01",
       "hasta": "2026-07-01"
+    },
+    "pib_corriente": {
+      "obs": 89,
+      "desde": "2004-01-01",
+      "hasta": "2026-01-01"
     },
     "recaudacion_total": {
       "obs": 355,
