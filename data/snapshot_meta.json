@@ -1,7 +1,7 @@
 {
-  "generado": "2026-08-30T16:15:12Z",
-  "observaciones": 51945,
-  "ultima_obs": "2026-08-30",
+  "generado": "2026-08-31T18:55:21Z",
+  "observaciones": 51952,
+  "ultima_obs": "2026-08-31",
   "series": {
     "base_monetaria": {
       "obs": 7545,
@@ -39,9 +39,9 @@
       "hasta": "2026-07-01"
     },
     "intereses_netos": {
-      "obs": 126,
+      "obs": 127,
       "desde": "2016-01-01",
-      "hasta": "2026-06-01"
+      "hasta": "2026-07-01"
     },
     "ipc_general": {
       "obs": 116,
@@ -69,14 +69,14 @@
       "hasta": "2026-08-26"
     },
     "resultado_financiero": {
-      "obs": 126,
+      "obs": 127,
       "desde": "2016-01-01",
-      "hasta": "2026-06-01"
+      "hasta": "2026-07-01"
     },
     "resultado_primario": {
-      "obs": 126,
+      "obs": 127,
       "desde": "2016-01-01",
-      "hasta": "2026-06-01"
+      "hasta": "2026-07-01"
     },
     "riesgo_pais": {
       "obs": 7690,
@@ -94,24 +94,24 @@
       "hasta": "2026-08-28"
     },
     "usd_blue": {
-      "obs": 5719,
+      "obs": 5720,
       "desde": "2011-01-03",
-      "hasta": "2026-08-30"
+      "hasta": "2026-08-31"
     },
     "usd_ccl": {
-      "obs": 4989,
+      "obs": 4990,
       "desde": "2013-01-02",
-      "hasta": "2026-08-30"
+      "hasta": "2026-08-31"
     },
     "usd_mep": {
-      "obs": 2863,
+      "obs": 2864,
       "desde": "2018-10-29",
-      "hasta": "2026-08-30"
+      "hasta": "2026-08-31"
     },
     "usd_oficial": {
-      "obs": 5719,
+      "obs": 5720,
       "desde": "2011-01-03",
-      "hasta": "2026-08-30"
+      "hasta": "2026-08-31"
     }
   }
 }
