@@ -1,12 +1,12 @@
 {
-  "generado": "2026-09-04T15:56:04Z",
-  "observaciones": 51989,
+  "generado": "2026-09-05T14:49:53Z",
+  "observaciones": 51994,
   "ultima_obs": "2026-09-04",
   "series": {
     "base_monetaria": {
-      "obs": 7549,
+      "obs": 7550,
       "desde": "1996-01-02",
-      "hasta": "2026-09-01"
+      "hasta": "2026-09-02"
     },
     "desempleo": {
       "obs": 91,
@@ -64,9 +64,9 @@
       "hasta": "2026-08-01"
     },
     "reservas": {
-      "obs": 7548,
+      "obs": 7549,
       "desde": "1996-01-03",
-      "hasta": "2026-09-01"
+      "hasta": "2026-09-02"
     },
     "resultado_financiero": {
       "obs": 127,
@@ -79,19 +79,19 @@
       "hasta": "2026-07-01"
     },
     "riesgo_pais": {
-      "obs": 7694,
+      "obs": 7695,
       "desde": "1999-01-22",
-      "hasta": "2026-09-03"
+      "hasta": "2026-09-04"
     },
     "tamar_priv": {
-      "obs": 462,
+      "obs": 463,
       "desde": "2024-10-01",
-      "hasta": "2026-09-02"
+      "hasta": "2026-09-03"
     },
     "tc_mayorista": {
-      "obs": 6005,
+      "obs": 6006,
       "desde": "2002-03-04",
-      "hasta": "2026-09-03"
+      "hasta": "2026-09-04"
     },
     "usd_blue": {
       "obs": 5724,
