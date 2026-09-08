@@ -117,11 +117,65 @@ print(lec.texto, lec.verificado, lec.numeros_huerfanos)
 tokens (`MAX_TOKENS`) es holgado para la prosa porque el pensamiento consume del mismo
 presupuesto; una respuesta truncada se trata como error y no como lectura.
 
-## 6. Qué queda pendiente
+## 6. Dossiers econométricos
 
-- **Dossier econométrico.** Redactar sobre el VAR, el pass-through y el nowcast exige
-  llevar al dossier los supuestos de identificación (el orden de Cholesky) y el ancho de
-  las bandas, no solo los puntos estimados. Ver `hallazgos_econometricos.md` §5.
+`dossier_canal` y `dossier_nowcast` extienden la capa al VAR, el pass-through y el
+nowcast. La regla que los organiza es que **la estimación puntual sola no es un
+resultado**: si al dossier entra únicamente el número central, el modelo escribe una
+oración categórica sobre él y la prosa queda más segura que la evidencia. Entonces entran
+como hechos de primera clase los dos límites del intervalo, **su amplitud**, en cuántos
+horizontes excluye al cero, y **la misma respuesta bajo cada ordenamiento de Cholesky
+alternativo**. Recién con eso la prosa puede separar qué parte de la conclusión es
+evidencia y qué parte es supuesto de identificación.
+
+**Se precalcula todo lo que el modelo querría restar.** La amplitud del intervalo
+(`superior − inferior`) y la distancia entre el nowcast y el último dato oficial son
+cuentas: si no vienen hechas, el modelo las hace y el verificador las marca como
+derivadas — correctamente, y de forma inútil, porque el número era cierto. La regla
+general: cualquier magnitud que la lectura natural va a mencionar tiene que existir como
+`Hecho`, no como resta implícita.
+
+**Las unidades se fijan del lado de Python.** `PassThrough.acumulado` es una fracción
+(0,534) y la prosa natural dice «53,4%». Escribir eso desde 0,534 es un reescalado, que es
+exactamente lo que el verificador rechaza. El ×100 va en el constructor del dossier.
+
+**Reciben los objetos ya estimados, no los nombres de las series.** Mismo criterio que
+`dossier_gobierno`: el dossier describe los números que están en pantalla, no unos
+parecidos recalculados por su cuenta. Además tipan por comportamiento, así que `narrador`
+sigue sin importar `statsmodels` ni `scikit-learn` — importa en el arranque del dashboard
+y ese import cuesta segundos. Hay un test que lo verifica en un intérprete limpio.
+
+**Qué se deja afuera a propósito.** La tabla de Granger mensual reporta el «p mínimo sobre
+6 rezagos»: es el mejor de seis pruebas sin corregir por comparaciones múltiples, no un
+p-valor, y el propio proyecto lo tiene marcado como criterio a migrar. Los coeficientes
+del ElasticNet están sin estandarizar, así que sus magnitudes no son comparables entre
+variables de escalas distintas. Ninguno de los dos entra: **un número que no creemos no
+se le da a un modelo cuya única defensa es no poder afirmar de más.** Si entrara, el
+modelo escribiría «causa en sentido de Granger con p = 0,001» y la culpa no sería suya.
+
+Los caveats de estos dossiers son estructurales, no de cortesía: que Cholesky es un
+supuesto del analista y no algo que los datos identifiquen; que el bootstrap de
+percentiles sin corrección de sesgo da un piso de la incertidumbre y no un techo; que el
+shock es de un desvío estándar y no de una magnitud elegida; que el sistema va en
+log-diferencias porque el IPC es I(2) y el TC I(1); y que la muestra mensual **poolea
+regímenes** (2018-19, 2023-24) sin que se haya testeado estabilidad de parámetros.
+
+### El signo tipográfico
+
+Un detalle de parseo que era un falso positivo garantizado: el modelo escribe con
+tipografía correcta y usa el menos matemático **U+2212** (`−`), que no es el guion ASCII.
+Sin normalizarlo, «−0,80» se leía como +0,80 y **toda IRF negativa legítima salía
+marcada**. Se normaliza solo ese carácter; la raya (`–`, U+2013) queda afuera a propósito,
+porque separa rangos («2017–2026») y convertirla en signo inventaría un «-2026».
+
+El bug ya afectaba a `dossier_serie` —cualquier variación interanual negativa— y estaba
+latente desde el principio.
+
+## 7. Qué queda pendiente
+
+- **Estabilidad de parámetros.** El caveat de regímenes pooleados dice la verdad, pero
+  decirla no es testearla: falta Chow / ventanas móviles sobre el VAR mensual, que es el
+  único de los dos que se estima sin partir por régimen.
 - **Caché compartido.** Hoy vive en el disco del contenedor: en Streamlit Cloud se pierde
   con cada reinicio, así que la primera visita tras dormir paga la redacción de nuevo.
 - **Costo observado.** No se registra el gasto por lectura; con el caché las llamadas son

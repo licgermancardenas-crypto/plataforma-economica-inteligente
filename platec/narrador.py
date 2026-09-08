@@ -48,7 +48,7 @@ MODELO = "claude-opus-5"
 
 # Versión del prompt. Entra en el hash del caché: al tocar las reglas de redacción
 # hay que invalidar las lecturas viejas, porque fueron escritas con otras reglas.
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "narrador"
 
@@ -66,7 +66,8 @@ REGLAS DURAS
 1. NO CALCULÁS. Todos los números ya vienen calculados en el dossier. Usá exactamente los \
 valores y las unidades que figuran ahí: no los reescales (nada de pasar "45.511 millones" \
 a "45,5 mil millones"), no los conviertas de moneda, no los promedies, no restes uno de \
-otro para obtener un tercero.
+otro para obtener un tercero. Si un valor viene con signo negativo, escribilo CON su signo \
+(−0,80 pp), no lo pases a positivo describiendo la dirección en palabras.
 
 2. NO USES NINGÚN NÚMERO QUE NO ESTÉ EN EL DOSSIER. Los años son la única excepción. Si te \
 falta un dato para afirmar algo, no lo afirmes: decí que no está disponible.
@@ -157,6 +158,13 @@ def _fmt(v: float, decimales: int = 1) -> str:
 # Exigir los grupos de 3 evita comerse el punto final de una oración ("... subió 12.").
 _RE_NUMERO = re.compile(r"-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?")
 
+# El modelo escribe con tipografía correcta, y el menos tipográfico (U+2212) NO es el
+# guion ASCII. Sin normalizarlo, "−0,80" se lee como +0,80 y una IRF negativa legítima
+# se marca como huérfana: un falso positivo garantizado en todo dossier con caídas.
+# Se normaliza SOLO el menos matemático. La raya (–, U+2013) queda afuera a propósito:
+# separa rangos ("2017–2026") y convertirla en signo inventaría un "-2026".
+_MENOS_UNICODE = "\u2212"
+
 
 def numeros_en(texto: str) -> list[tuple[str, float, int]]:
     """
@@ -165,7 +173,7 @@ def numeros_en(texto: str) -> list[tuple[str, float, int]]:
     el modelo escribió: si redondeó a un decimal, se lo compara redondeado a un decimal.
     """
     out: list[tuple[str, float, int]] = []
-    for m in _RE_NUMERO.finditer(texto):
+    for m in _RE_NUMERO.finditer(texto.replace(_MENOS_UNICODE, "-")):
         crudo = m.group(0)
         limpio = crudo.replace(".", "").replace(",", ".")
         try:
@@ -336,6 +344,208 @@ def dossier_gobierno(etiqueta: str, resumen: pd.DataFrame,
     return Dossier(titulo=f"Comparación entre gobiernos: {etiqueta}",
                    contexto=contexto, hechos=tuple(hechos), caveats=tuple(caveats),
                    pregunta="Escribí la lectura comparativa de esta métrica entre mandatos.")
+
+
+# ---------------------------------------------------------------------------
+# Dossiers econométricos
+# ---------------------------------------------------------------------------
+# Estos constructores NO reestiman nada: reciben los objetos que ya calcularon
+# `econometria` y `nowcast`, igual que `dossier_gobierno` recibe el resumen. Por la
+# razón de siempre —el dossier tiene que describir exactamente los números que están
+# en pantalla, no otros parecidos— y por una segunda que es de arquitectura: reestimar
+# un VAR con bootstrap cuesta segundos, y `narrador` se importa en el arranque del
+# dashboard. Se tipa por comportamiento y no por clase, así este módulo sigue sin
+# arrastrar `statsmodels` ni `scikit-learn`.
+#
+# LO QUE SE DEJA AFUERA A PROPÓSITO. La tabla de Granger mensual reporta el «p mínimo
+# sobre 6 rezagos». Ese mínimo no es un p-valor: es el mejor de seis pruebas, sin
+# corregir por comparaciones múltiples, y el propio proyecto lo tiene marcado como
+# criterio a migrar (hallazgos_econometricos.md, §Limitaciones). Un número que no
+# creemos no entra a un dossier cuya razón de ser es que el modelo no pueda afirmar de
+# más: si entrara, el modelo escribiría «causa en sentido de Granger con p = 0,001» y
+# la culpa no sería suya. Lo mismo con los coeficientes del ElasticNet: están sin
+# estandarizar, así que sus magnitudes no son comparables entre variables de escalas
+# distintas y no sostienen la frase «tal variable pesa más» que invitarían a escribir.
+
+
+def _orden_legible(orden, etiquetas: dict | None = None) -> str:
+    """El ordenamiento de Cholesky como cadena, con nombres humanos si los hay."""
+    e = etiquetas or {}
+    return " → ".join(str(e.get(v, v)) for v in orden)
+
+
+def dossier_canal(banda, ordenes=None, *, shock: str, respuesta: str,
+                  pt=None, etiquetas: dict | None = None,
+                  desde: str = "", caveats_extra: tuple[str, ...] = ()) -> Dossier:
+    """
+    Dossier de un canal de transmisión: la respuesta acumulada de `respuesta` ante un
+    shock en `shock`, con su intervalo y su sensibilidad al supuesto de identificación.
+
+    `banda` es un `econometria.IRFBandas`; `ordenes`, el DataFrame de
+    `econometria.sensibilidad_orden` (una columna por ordenamiento). `pt` es opcional:
+    si viene un `econometria.PassThrough`, se agrega la ruta por rezagos distribuidos
+    para el mismo canal.
+
+    El punto de este dossier es que el modelo NO pueda escribir solo la estimación
+    puntual. Los límites del intervalo, su amplitud, en cuántos horizontes excluye al
+    cero y la misma respuesta bajo ordenamientos alternativos entran como hechos de
+    primera clase: son la única forma de que la prosa pueda decir cuánto de la
+    conclusión es evidencia y cuánto es supuesto.
+    """
+    h = banda.puntual.index[-1]
+    lo, hi = float(banda.inferior[h]), float(banda.superior[h])
+    signif = list(banda.significativa_en)
+
+    hechos = [
+        Hecho(f"Respuesta acumulada de {respuesta} a un shock de {shock}, "
+              f"estimación puntual", float(banda.puntual[h]), "pp", 2),
+        Hecho("Límite inferior del intervalo", lo, "pp", 2),
+        Hecho("Límite superior del intervalo", hi, "pp", 2),
+        # La amplitud entra ya calculada: restar los dos límites es una cuenta, y una
+        # cuenta hecha por el modelo se marca como huérfana aunque el resultado sea
+        # correcto. Sin este hecho la prosa no puede hablar de cuán ancha es la banda,
+        # que es justamente lo que hay que decir de este resultado.
+        Hecho("Amplitud del intervalo", hi - lo, "pp", 2),
+        Hecho("Confianza del intervalo", (1 - banda.signif) * 100, "%", 0),
+        Hecho("Horizonte al que corresponde la respuesta", float(h), "meses", 0),
+        Hecho("Horizontes evaluados", float(len(banda.puntual)), "", 0),
+        Hecho("Horizontes en los que el intervalo excluye al cero",
+              float(len(signif)), "", 0),
+        Hecho("Rezagos del VAR (elegidos por AIC)", float(banda.p), "", 0),
+        Hecho("Observaciones del VAR", float(banda.n), "", 0),
+        Hecho("Réplicas del bootstrap", float(banda.repl), "", 0),
+    ]
+
+    orden_base = _orden_legible(banda.orden, etiquetas)
+    if ordenes is not None and len(ordenes.columns):
+        for col in ordenes.columns:
+            legible = _orden_legible(str(col).split(" → "), etiquetas)
+            hechos.append(Hecho(f"La misma respuesta bajo el ordenamiento {legible}",
+                                float(ordenes[col].iloc[-1]), "pp", 2))
+
+    if pt is not None:
+        lags = int(pt.acumulado.index[-1])
+        hechos += [
+            # ×100 en Python y no en la prosa: `acumulado` es una fracción y pasar
+            # 0,24 a "24%" es un reescalado, exactamente lo que el verificador marca.
+            Hecho(f"Traslado acumulado a {lags} meses por rezagos distribuidos",
+                  float(pt.acumulado.iloc[-1]) * 100, "%", 1),
+            Hecho("Traslado en el mismo mes del shock (impacto)",
+                  float(pt.coef_por_lag.iloc[0]) * 100, "%", 1),
+            Hecho("Rezagos de la regresión de rezagos distribuidos", float(lags), "meses", 0),
+            Hecho("R² de la regresión de rezagos distribuidos", float(pt.r2), "", 3),
+            Hecho("Observaciones de la regresión de rezagos distribuidos",
+                  float(pt.n), "", 0),
+        ]
+
+    caveats = [
+        f"El ordenamiento de Cholesky ({orden_base}) es un supuesto del analista, no algo "
+        "que los datos identifiquen: impone qué variable puede afectar a cuál dentro del "
+        "mismo mes. Por eso se reporta la misma respuesta bajo ordenamientos alternativos. "
+        "Si el signo se sostiene al reordenar, es evidencia; si cambia, es el supuesto.",
+        "El intervalo son percentiles de un bootstrap de residuos, sin corrección de "
+        "sesgo. En muestras cortas ese intervalo tiende a quedar angosto: es un piso de "
+        "la incertidumbre, no un techo.",
+        "El shock es de un desvío estándar de la propia serie —una unidad estadística de "
+        "esta muestra—, no una devaluación ni un salto de riesgo de una magnitud elegida. "
+        "La respuesta está en puntos porcentuales de la variación mensual.",
+        "El sistema se estima en log-diferencias mensuales, no en niveles: el IPC resulta "
+        "I(2) y el tipo de cambio I(1), órdenes distintos que no admiten una cointegración "
+        "estándar. Acá hay dinámica de corto plazo; no hay relación de largo plazo estimada.",
+        "La muestra mensual cruza cambios de régimen (2018-19, 2023-24) y el VAR se estima "
+        "pooleado sobre todos ellos: no se testeó estabilidad de parámetros. Los "
+        "coeficientes son un promedio entre regímenes que pueden no compartir mecanismo.",
+    ]
+    if h not in signif:
+        caveats.append(
+            "En el horizonte que se reporta el intervalo contiene al cero: la estimación "
+            "puntual no se distingue de cero ahí. No la leas como un efecto establecido.")
+    if pt is not None:
+        caveats.append(
+            "Las dos rutas no son comparables de igual a igual: la regresión de rezagos "
+            "distribuidos impone que el tipo de cambio es exógeno y el VAR no. Que la "
+            "regresión dé un número más cerrado viene de ese supuesto, no de más "
+            "evidencia. Que ambas difieran es esperable y no es un error de estimación.")
+    caveats += list(caveats_extra)
+
+    contexto = (
+        f"Canal de transmisión {shock} → {respuesta} estimado con un VAR mensual en "
+        f"log-diferencias{f', muestra desde {desde}' if desde else ''}. La respuesta es "
+        f"ACUMULADA hasta el horizonte indicado, ante un shock de un desvío estándar en "
+        f"{shock}, identificado por descomposición de Cholesky.")
+
+    return Dossier(
+        titulo=f"Canal {shock} → {respuesta}", contexto=contexto,
+        hechos=tuple(hechos), caveats=tuple(caveats),
+        pregunta=("Escribí la lectura de este canal de transmisión. Decí qué muestra la "
+                  "estimación puntual, cuánta incertidumbre tiene alrededor y si la "
+                  "conclusión sobrevive al cambio de ordenamiento."))
+
+
+def dossier_nowcast(nc, nc_actual: float, infl_ultima: float, ph=None,
+                    desde: str = "") -> Dossier:
+    """
+    Dossier del nowcast de inflación (y, si viene `ph`, de la curva de Phillips).
+
+    `nc` es un `nowcast.ResultadoNowcast`; `nc_actual`, la estimación para el mes en
+    curso; `infl_ultima`, el último dato oficial publicado.
+    """
+    hechos = [
+        Hecho("Nowcast de la inflación del mes en curso", float(nc_actual), "%", 2),
+        Hecho("Último dato de inflación mensual publicado", float(infl_ultima), "%", 2),
+        # Precalculada por lo mismo que la amplitud del intervalo: la diferencia entre
+        # dos hechos autorizados sigue siendo una cuenta del lado del modelo.
+        Hecho("Diferencia entre el nowcast y el último dato publicado",
+              float(nc_actual) - float(infl_ultima), "pp", 2),
+        Hecho("Error del modelo fuera de muestra (RMSE)", float(nc.rmse_modelo), "pp", 2),
+        Hecho("Error del benchmark ingenuo fuera de muestra (RMSE)",
+              float(nc.rmse_naive), "pp", 2),
+        Hecho("Reducción del error respecto del benchmark", float(nc.mejora_pct), "%", 1),
+        Hecho("Meses evaluados fuera de muestra", float(nc.n_test), "meses", 0),
+    ]
+
+    caveats = [
+        "El benchmark es un paseo aleatorio: predecir que la inflación del mes será la "
+        "del mes pasado. Es el piso que cualquier modelo tiene que superar para ser algo "
+        "más que inercia, no un rival exigente.",
+        "El RMSE es fuera de muestra con ventana expansiva: cada mes se predice "
+        "entrenando solo con datos anteriores. La regularización se reelige una vez por "
+        "año de test y se reutiliza los meses siguientes; queda desactualizada, nunca "
+        "adelantada: en ningún paso mira datos posteriores al mes que predice.",
+        "Es un NOWCAST, no un pronóstico. Usa el tipo de cambio de fin de mes, así que "
+        "recién queda disponible al cierre del mes que estima, antes de que publique el "
+        "INDEC. No dice nada sobre los meses siguientes.",
+        "Los errores están en puntos porcentuales de inflación mensual: hay que leerlos "
+        "contra el nivel de inflación del período, no en abstracto.",
+    ]
+
+    if ph is not None:
+        hechos += [
+            Hecho("Pendiente de la curva de Phillips (desempleo → inflación)",
+                  float(ph.beta_desempleo), "", 2),
+            Hecho("p-valor de esa pendiente", float(ph.p_valor), "", 4),
+            Hecho("R² de la curva de Phillips", float(ph.r2), "", 3),
+            Hecho("Observaciones de la curva de Phillips", float(ph.n), "", 0),
+        ]
+        caveats.append(
+            "La curva de Phillips se estima con desempleo trimestral, que es la "
+            "frecuencia que limita la muestra. Si el p-valor no rechaza, la relación no "
+            "está identificada acá y el signo de la pendiente no se debe interpretar: en "
+            "Argentina la inflación la gobiernan lo monetario y lo cambiario, no el "
+            "mercado de trabajo.")
+
+    contexto = (
+        f"Estimación de la inflación mensual del mes en curso con regresión regularizada "
+        f"(ElasticNet) sobre variables de alta frecuencia —devaluación oficial y CCL, "
+        f"brecha, inercia—, validada con walk-forward contra un benchmark ingenuo"
+        f"{f', muestra desde {desde}' if desde else ''}."
+        + (" Incluye la curva de Phillips estimada sobre la misma muestra." if ph is not None else ""))
+
+    return Dossier(
+        titulo="Nowcast de inflación", contexto=contexto,
+        hechos=tuple(hechos), caveats=tuple(caveats),
+        pregunta=("Escribí la lectura del nowcast: qué estima para el mes en curso y "
+                  "cuánto vale esa estimación a la luz de su error fuera de muestra."))
 
 
 # ---------------------------------------------------------------------------

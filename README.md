@@ -33,8 +33,9 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
 - ✅ **Etapa 8 — Capa de IA (`platec/narrador.py`).** Redacción automática de lecturas
   con LLM vía API, con **verificación numérica**: el modelo no calcula, recibe un dossier
   cerrado de hechos ya computados y cada número de su texto se contrasta contra ese
-  dossier antes de mostrarse. Sin API key el dashboard funciona igual.
-  Ver [`docs/capa_ia.md`](docs/capa_ia.md).
+  dossier antes de mostrarse. Cubre series, comparación entre gobiernos y los resultados
+  econométricos (VAR con bandas, pass-through, nowcast). Sin API key el dashboard funciona
+  igual. Ver [`docs/capa_ia.md`](docs/capa_ia.md).
 
 ## Estructura
 
@@ -54,7 +55,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (110 casos)
+python3 -m pytest                        # suite de tests (132 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -112,6 +113,18 @@ derivar son cuentas, y las cuentas son del lado de Python. Los años son la úni
 
 Si aparece un huérfano se reintenta señalándole al modelo *cuál* número está de más; si
 insiste, la lectura se muestra marcada en vez de ocultarse.
+
+Sobre resultados econométricos la regla se endurece, porque **la estimación puntual sola no
+es un resultado**: al dossier del VAR entran los dos límites del intervalo, su amplitud, en
+cuántos horizontes excluye al cero y *la misma respuesta bajo cada ordenamiento de Cholesky
+alternativo*. Recién con eso la prosa puede decir qué parte de la conclusión es evidencia y
+qué parte es supuesto de identificación. Todo lo que la lectura natural querría restar
+—la amplitud de una banda, la distancia entre el nowcast y el último dato oficial— viene
+precalculado: si no, el modelo lo resta y el verificador lo marca como derivado, que es
+correcto y a la vez inútil. Y lo que el proyecto no cree —el «p mínimo sobre 6 rezagos» de
+la tabla de Granger, los coeficientes sin estandarizar del ElasticNet— directamente no
+entra: un número que no creemos no se le da a un modelo cuya única defensa es no poder
+afirmar de más.
 
 El determinismo **no** viene de bajar la temperatura —los modelos actuales de la familia
 Opus rechazan `temperature` con un 400— sino de cachear por hash del dossier: mismos datos,

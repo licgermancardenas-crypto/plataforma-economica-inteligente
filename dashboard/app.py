@@ -866,6 +866,17 @@ def pagina_econometria():
         st.dataframe(g, **ANCHO)
         st.caption("Granger es precedencia temporal, no causalidad estructural.")
 
+    with st.container(border=True):
+        # El dossier recibe `banda`, `ordenes` y `pt` —los mismos objetos que alimentan
+        # los gráficos de arriba— y no vuelve a estimar: la lectura describe exactamente
+        # lo que está en pantalla. La tabla de Granger, en cambio, NO entra al dossier:
+        # su "p mínimo sobre 6 rezagos" no es un p-valor. Ver platec/narrador.py.
+        panel_narrador(lambda: nar.dossier_canal(
+            banda, ordenes, shock="TC mayorista", respuesta="IPC", pt=pt,
+            etiquetas=ETIQUETA, desde=anio),
+            clave=f"canal_tc_ipc_{anio}",
+            titulo="Lectura del analista — traslado del dólar a precios")
+
     st.divider()
     seccion("Canal del riesgo soberano")
     r1, r2 = st.columns([3, 2])
@@ -934,6 +945,13 @@ def pagina_econometria():
             f"Al horizonte final: de **{rr.min():+.2f}** a **{rr.max():+.2f} pp**. "
             "A diferencia del canal cambiario, acá el signo no depende del supuesto de "
             "identificación — que es lo que hace creíble al resultado.")
+
+    with st.container(border=True):
+        panel_narrador(lambda: nar.dossier_canal(
+            banda_riesgo, ordenes_riesgo, shock="Riesgo país",
+            respuesta="EMAE (desest.)", etiquetas=ETIQUETA, desde=anio),
+            clave=f"canal_riesgo_emae_{anio}",
+            titulo="Lectura del analista — riesgo soberano y actividad")
 
     st.divider()
     seccion("VAR diario: ¿el riesgo país anticipa al dólar en días?")
@@ -1042,6 +1060,11 @@ def pagina_econometria():
                        help=f"RMSE {nc.rmse_modelo} vs naive {nc.rmse_naive} ({nc.n_test} meses)")
             st.caption("ElasticNet con variables de alta frecuencia, validación walk-forward. "
                        "Le gana al random walk.")
+
+    with st.container(border=True):
+        panel_narrador(lambda: nar.dossier_nowcast(nc, nc_now, infl_real, ph=ph, desde=anio),
+                       clave=f"nowcast_{anio}",
+                       titulo="Lectura del analista — nowcast y curva de Phillips")
 
 
 # ---------------------------------------------------------------------------

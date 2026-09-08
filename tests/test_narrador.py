@@ -317,3 +317,237 @@ def test_dossier_de_gobiernos_rechaza_una_metrica_sin_ningun_dato():
                           "en_curso": [False, True]}, index=["A", "B"])
     with pytest.raises(ValueError, match="cobertura"):
         nar.dossier_gobierno("Nada", vacio)
+
+
+# ---------------------------------------------------------------------------
+# Dossiers econométricos
+# ---------------------------------------------------------------------------
+# Se prueban con dobles y no contra la base: `dossier_canal` y `dossier_nowcast` reciben
+# los objetos ya estimados en vez de reestimar, así que tipan por comportamiento. Eso es
+# lo que permite testearlos sin statsmodels, sin scikit-learn y sin esperar un bootstrap.
+class BandaFalsa:
+    """Doble de econometria.IRFBandas."""
+
+    def __init__(self, puntual, inferior, superior, orden=("a", "b"),
+                 p=2, repl=500, signif=0.05, n=112):
+        idx = pd.RangeIndex(len(puntual))
+        self.puntual = pd.Series(puntual, index=idx, dtype=float)
+        self.inferior = pd.Series(inferior, index=idx, dtype=float)
+        self.superior = pd.Series(superior, index=idx, dtype=float)
+        self.orden, self.p, self.repl, self.signif, self.n = list(orden), p, repl, signif, n
+
+    @property
+    def significativa_en(self):
+        return [h for h in self.puntual.index
+                if not (self.inferior[h] <= 0 <= self.superior[h])]
+
+
+class PassThroughFalso:
+    """Doble de econometria.PassThrough: `acumulado` viene en FRACCIÓN, como el real."""
+
+    def __init__(self, acumulado, coef, r2=0.706, n=108):
+        idx = pd.RangeIndex(len(acumulado))
+        self.acumulado = pd.Series(acumulado, index=idx, dtype=float)
+        self.coef_por_lag = pd.Series(coef, index=idx, dtype=float)
+        self.r2, self.n = r2, n
+
+
+class NowcastFalso:
+    def __init__(self, rmse_modelo=1.68, rmse_naive=2.42, mejora_pct=30.7, n_test=65):
+        self.rmse_modelo, self.rmse_naive = rmse_modelo, rmse_naive
+        self.mejora_pct, self.n_test = mejora_pct, n_test
+
+
+class PhillipsFalsa:
+    def __init__(self, beta_desempleo=-1.11, p_valor=0.1229, r2=0.657, n=36):
+        self.beta_desempleo, self.p_valor, self.r2, self.n = beta_desempleo, p_valor, r2, n
+        self.forma = "aumentada"
+
+
+def _banda_significativa():
+    """IRF que crece y cuyo intervalo nunca toca al cero."""
+    return BandaFalsa(puntual=[0.5 * i for i in range(13)],
+                      inferior=[0.1 + 0.3 * i for i in range(13)],
+                      superior=[0.9 + 0.7 * i for i in range(13)],
+                      orden=("riesgo", "base", "tc", "ipc"))
+
+
+def _ordenes_falsos():
+    return pd.DataFrame({"riesgo → base → tc → ipc": [0.4 * i for i in range(13)],
+                         "riesgo → base → ipc → tc": [-0.2 * i for i in range(13)]},
+                        index=pd.RangeIndex(13, name="horizonte"))
+
+
+# --- el signo, que en una IRF es el resultado ------------------------------
+def test_el_menos_tipografico_no_convierte_una_caida_en_un_huerfano():
+    """
+    Regresión. El modelo escribe con tipografía correcta y usa el menos matemático
+    (U+2212), que NO es el guion ASCII. Sin normalizarlo, "−0,80" se leía como +0,80 y
+    toda IRF negativa legítima salía marcada.
+    """
+    d = nar.Dossier(titulo="t", contexto="c",
+                    hechos=(nar.Hecho("Respuesta acumulada", -0.80, "pp", 2),))
+    assert nar.verificar("El EMAE responde −0,80 pp a doce meses.", d) == []
+    assert nar.verificar("El EMAE responde -0,80 pp a doce meses.", d) == []
+
+
+def test_el_menos_tipografico_no_blanquea_un_numero_inventado():
+    """Normalizar el signo no afloja la verificación: sigue siendo el valor lo que importa."""
+    d = nar.Dossier(titulo="t", contexto="c",
+                    hechos=(nar.Hecho("Respuesta acumulada", -0.80, "pp", 2),))
+    assert nar.verificar("El EMAE responde −2,40 pp.", d) == ["-2,40"]
+
+
+def test_la_raya_de_un_rango_no_se_lee_como_signo():
+    """'2017–2026' son dos años, no un año y un '-2026' que habría que marcar."""
+    d = nar.Dossier(titulo="t", contexto="c", hechos=(nar.Hecho("x", 1.0),))
+    assert nar.verificar("La muestra cubre 2017–2026.", d) == []
+
+
+# --- dossier del canal -----------------------------------------------------
+def test_el_dossier_del_canal_lleva_el_intervalo_y_no_solo_el_punto():
+    d = nar.dossier_canal(_banda_significativa(), _ordenes_falsos(),
+                          shock="TC", respuesta="IPC")
+    etiquetas = [h.etiqueta for h in d.hechos]
+    assert any("estimación puntual" in e for e in etiquetas)
+    assert "Límite inferior del intervalo" in etiquetas
+    assert "Límite superior del intervalo" in etiquetas
+
+
+def test_la_amplitud_del_intervalo_viene_calculada_y_no_la_resta_el_modelo():
+    """
+    Restar los dos límites es una cuenta, y una cuenta del modelo se marca como huérfana
+    aunque el resultado sea correcto. Sin este hecho la prosa no podría decir cuán ancha
+    es la banda — que es lo primero que hay que decir de este resultado.
+    """
+    banda = _banda_significativa()
+    d = nar.dossier_canal(banda, None, shock="TC", respuesta="IPC")
+    h = banda.puntual.index[-1]
+    ancho = float(banda.superior[h] - banda.inferior[h])
+    assert any(hh.etiqueta == "Amplitud del intervalo" and hh.valor == ancho
+               for hh in d.hechos)
+    assert nar.verificar(f"El intervalo mide {nar._fmt(ancho, 2)} pp de ancho.", d) == []
+
+
+def test_el_orden_de_cholesky_viaja_como_supuesto_declarado():
+    d = nar.dossier_canal(_banda_significativa(), _ordenes_falsos(),
+                          shock="TC", respuesta="IPC",
+                          etiquetas={"tc": "TC mayorista", "ipc": "IPC"})
+    assert any("Cholesky" in c and "supuesto del analista" in c for c in d.caveats)
+    # y con nombres legibles, no con las claves internas del DataFrame
+    assert any("TC mayorista" in c for c in d.caveats)
+
+
+def test_los_ordenamientos_alternativos_son_hechos_de_primera_clase():
+    """Si el signo cambia al reordenar, la conclusión es del supuesto: el modelo tiene que poder decirlo."""
+    ordenes = _ordenes_falsos()
+    d = nar.dossier_canal(_banda_significativa(), ordenes, shock="TC", respuesta="IPC")
+    alternativos = [h.valor for h in d.hechos if h.etiqueta.startswith("La misma respuesta")]
+    assert sorted(alternativos) == sorted(float(ordenes[c].iloc[-1]) for c in ordenes)
+
+
+def test_avisa_cuando_el_intervalo_contiene_al_cero_en_el_horizonte_reportado():
+    banda = BandaFalsa(puntual=[0.1] * 13, inferior=[-1.0] * 13, superior=[1.2] * 13)
+    d = nar.dossier_canal(banda, None, shock="TC", respuesta="IPC")
+    assert any("contiene al cero" in c for c in d.caveats)
+    assert any(h.etiqueta == "Horizontes en los que el intervalo excluye al cero"
+               and h.valor == 0 for h in d.hechos)
+
+
+def test_sin_horizontes_ambiguos_no_se_agrega_la_advertencia_de_cero():
+    d = nar.dossier_canal(_banda_significativa(), None, shock="TC", respuesta="IPC")
+    assert not any("contiene al cero" in c for c in d.caveats)
+
+
+def test_el_pass_through_entra_en_porcentaje_y_no_en_fraccion():
+    """
+    `acumulado` es una fracción (0,534). Si entrara así, el modelo que escribe el número
+    natural —"53,4%"— estaría reescalando, y reescalar es una cuenta que se marca.
+    Se multiplica en Python, que es donde viven las cuentas.
+    """
+    pt = PassThroughFalso(acumulado=[0.15, 0.30, 0.42, 0.48, 0.51, 0.53, 0.534],
+                          coef=[0.15, 0.15, 0.12, 0.06, 0.03, 0.02, 0.004])
+    d = nar.dossier_canal(_banda_significativa(), None, shock="TC", respuesta="IPC", pt=pt)
+    acum = next(h for h in d.hechos if h.etiqueta.startswith("Traslado acumulado"))
+    assert acum.valor == pytest.approx(53.4) and acum.unidad == "%"
+    assert nar.verificar("El traslado acumulado llega a 53,4%.", d) == []
+
+
+def test_con_pass_through_se_advierte_que_las_dos_rutas_no_son_comparables():
+    """La regresión impone que el dólar es exógeno; el VAR no. La diferencia no es un error."""
+    pt = PassThroughFalso(acumulado=[0.15, 0.534], coef=[0.15, 0.384])
+    d = nar.dossier_canal(_banda_significativa(), None, shock="TC", respuesta="IPC", pt=pt)
+    assert any("exógeno" in c for c in d.caveats)
+    sin_pt = nar.dossier_canal(_banda_significativa(), None, shock="TC", respuesta="IPC")
+    assert not any("exógeno" in c for c in sin_pt.caveats)
+
+
+def test_el_canal_declara_que_la_muestra_poolea_regimenes():
+    """No testeamos estabilidad de parámetros: el dossier no puede callarlo."""
+    d = nar.dossier_canal(_banda_significativa(), None, shock="TC", respuesta="IPC")
+    assert any("régimen" in c or "regímenes" in c for c in d.caveats)
+
+
+def test_todo_numero_del_dossier_del_canal_se_verifica_contra_si_mismo():
+    pt = PassThroughFalso(acumulado=[0.15, 0.534], coef=[0.15, 0.384])
+    d = nar.dossier_canal(_banda_significativa(), _ordenes_falsos(),
+                          shock="TC", respuesta="IPC", pt=pt)
+    for h in d.hechos:
+        assert nar.verificar(h.formateado(), d) == [], f"{h.etiqueta} no se verifica"
+
+
+# --- dossier del nowcast ---------------------------------------------------
+def test_el_nowcast_precalcula_la_diferencia_con_el_dato_oficial():
+    """Restar el último oficial del nowcast también es una cuenta del lado de Python."""
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11)
+    dif = next(h for h in d.hechos if h.etiqueta.startswith("Diferencia"))
+    assert dif.valor == pytest.approx(-0.31) and dif.unidad == "pp"
+    assert nar.verificar("El nowcast queda −0,31 pp por debajo del último dato.", d) == []
+
+
+def test_el_nowcast_declara_que_el_benchmark_es_un_piso_bajo():
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11)
+    assert any("paseo aleatorio" in c for c in d.caveats)
+
+
+def test_sin_phillips_el_dossier_del_nowcast_no_la_menciona():
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11)
+    assert not any("Phillips" in h.etiqueta for h in d.hechos)
+    assert not any("Phillips" in c for c in d.caveats)
+
+
+def test_con_phillips_no_significativa_avisa_que_no_se_lee_el_signo():
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11, ph=PhillipsFalsa())
+    assert any(h.etiqueta.startswith("Pendiente de la curva de Phillips") for h in d.hechos)
+    assert any("no se debe interpretar" in c for c in d.caveats)
+
+
+def test_el_p_valor_de_phillips_admite_el_redondeo_a_tres_decimales():
+    """p = 0,1229 escrito como '0,123' sigue siendo el mismo p-valor, no un número inventado."""
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11, ph=PhillipsFalsa())
+    assert nar.verificar("La pendiente no rechaza (p = 0,123).", d) == []
+
+
+def test_todo_numero_del_dossier_del_nowcast_se_verifica_contra_si_mismo():
+    d = nar.dossier_nowcast(NowcastFalso(), 1.80, 2.11, ph=PhillipsFalsa())
+    for h in d.hechos:
+        assert nar.verificar(h.formateado(), d) == [], f"{h.etiqueta} no se verifica"
+
+
+def test_los_dossiers_econometricos_no_arrastran_statsmodels_ni_sklearn():
+    """
+    `narrador` se importa en el arranque del dashboard. Tipar los dossiers econométricos
+    por comportamiento —y no importar `econometria` para anotarlos— es lo que evita pagar
+    el import de statsmodels antes de que se dibuje la primera pantalla.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys, platec.narrador; "
+         "print(any(m.split('.')[0] in ('statsmodels', 'sklearn') for m in sys.modules))"],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True, text=True, check=True)
+    assert r.stdout.strip() == "False"
