@@ -87,3 +87,37 @@ FROM observations o
 JOIN series s ON s.series_id = o.series_id
 JOIN (SELECT series_id, MAX(obs_date) AS md FROM observations GROUP BY series_id) m
   ON m.series_id = o.series_id AND m.md = o.obs_date;
+
+-- ============================================================================
+-- Comercio espejo (mirror trade) — flujos financieros ilícitos vía facturación
+-- ============================================================================
+-- POR QUÉ UNA TABLA APARTE Y NO SERIES. `observations` es (series_id, obs_date):
+-- una serie de tiempo univariada. Esto es un PANEL de cuatro dimensiones
+-- (año × quién declara × contraparte × flujo). Meterlo en `series` obligaría a
+-- inventar cientos de series_id sintéticos y, sobre todo, haría inexpresable el
+-- apareo espejo —comparar lo que A declara exportar a B contra lo que B declara
+-- importar de A—, que es justamente la operación por la que existe esta tabla.
+--
+-- Se guarda CRUDO, tal como lo reporta cada país. La discrepancia, el ajuste
+-- CIF/FOB y la agregación se derivan en `platec.comercio_espejo`, mismo criterio
+-- que el saldo comercial y el remuestreo: las transformaciones van en pandas,
+-- no en la base.
+--
+-- primary_value es la valoración primaria del reportante (FOB en exportaciones,
+-- CIF en importaciones, según la convención de Comtrade). fob_value y cif_value
+-- vienen SEPARADOS y pueden ser NULL: solo una minoría de los países informa las
+-- dos valoraciones, y esa diferencia es el flete y el seguro, no una anomalía.
+CREATE TABLE IF NOT EXISTS trade_mirror (
+    year          INTEGER NOT NULL,
+    reporter_code INTEGER NOT NULL,       -- M49 del país que declara
+    partner_code  INTEGER NOT NULL,       -- M49 de la contraparte (0 = Mundo)
+    flow_code     TEXT NOT NULL CHECK (flow_code IN ('X','M')),
+    primary_value REAL,                   -- valoración primaria del reportante
+    fob_value     REAL,                   -- NULL si el reportante no la informa
+    cif_value     REAL,                   -- NULL si el reportante no la informa
+    ingested_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    PRIMARY KEY (year, reporter_code, partner_code, flow_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mirror_year    ON trade_mirror(year);
+CREATE INDEX IF NOT EXISTS idx_mirror_partner ON trade_mirror(partner_code, flow_code);

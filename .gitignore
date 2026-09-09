@@ -5,6 +5,9 @@ data/raw/
 # sin depender de las APIs (ver scripts/snapshot.py).
 !data/snapshot.csv.gz
 !data/snapshot_meta.json
+# El panel de comercio espejo va aparte porque es anual: `snapshot.csv.gz` lo
+# reescribe el workflow todos los días y este cambia una vez por año.
+!data/snapshot_espejo.csv.gz
 
 # Lecturas redactadas por la capa de IA: caché local, reconstruible llamando al
 # modelo de nuevo. No se versiona (es texto generado, y cuesta plata regenerarlo,

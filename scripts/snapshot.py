@@ -18,6 +18,7 @@ de calidad) es código y lo siembra `init_db.py`.
 Uso:
     python3 scripts/snapshot.py export      # DB -> data/snapshot.csv.gz  (tras ingerir)
     python3 scripts/snapshot.py load        # snapshot -> DB (init_db + carga, sin red)
+    python3 scripts/snapshot.py export-espejo  # trade_mirror -> snapshot_espejo.csv.gz
     python3 scripts/snapshot.py info        # qué hay congelado y de cuándo
 """
 from __future__ import annotations
@@ -36,6 +37,15 @@ SNAPSHOT = ROOT / "data" / "snapshot.csv.gz"
 META = ROOT / "data" / "snapshot_meta.json"
 
 COLUMNAS = ("series_id", "obs_date", "value", "quality_flag")
+
+# El comercio espejo viaja en un archivo APARTE, y no es un detalle de prolijidad.
+# `snapshot.csv.gz` lo reescribe y lo commitea el workflow TODOS LOS DÍAS; el panel
+# espejo de Comtrade se publica una vez al año. Meterlos en el mismo archivo haría
+# que un binario de comercio exterior cambiara a diario sin que cambiara un dato,
+# ensuciando el historial y agrandando el repo para nada.
+SNAPSHOT_ESPEJO = ROOT / "data" / "snapshot_espejo.csv.gz"
+COLUMNAS_ESPEJO = ("year", "reporter_code", "partner_code", "flow_code",
+                   "primary_value", "fob_value", "cif_value")
 
 
 def _corto(p: Path) -> str:
@@ -162,6 +172,76 @@ def load(series: list[str] | None = None) -> int:
         con.commit()
     finally:
         con.close()
+    # El espejo viaja aparte pero se carga junto: `snapshot.py load` tiene que
+    # dejar la base COMPLETA, o el dashboard del deploy arranca sin comercio espejo.
+    load_espejo()
+    return n
+
+
+# ---------------------------------------------------------------------------
+# Comercio espejo (tabla trade_mirror)
+# ---------------------------------------------------------------------------
+def export_espejo() -> Path | None:
+    """Congela `trade_mirror`. Devuelve None si la tabla está vacía o no existe."""
+    if not DB_PATH.exists():
+        raise SystemExit(f"no existe {DB_PATH}: correr init_db.py primero")
+    con = sqlite3.connect(DB_PATH)
+    try:
+        try:
+            filas = con.execute(
+                f"SELECT {', '.join(COLUMNAS_ESPEJO)} FROM trade_mirror "
+                "ORDER BY year, reporter_code, partner_code, flow_code").fetchall()
+        except sqlite3.OperationalError:
+            print("trade_mirror no existe todavía (correr init_db.py + ingest_comtrade.py)")
+            return None
+    finally:
+        con.close()
+    if not filas:
+        print("trade_mirror vacía: no se congela nada")
+        return None
+
+    SNAPSHOT_ESPEJO.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(SNAPSHOT_ESPEJO, "wt", newline="", encoding="utf-8",
+                   compresslevel=9) as fh:
+        w = csv.writer(fh)
+        w.writerow(COLUMNAS_ESPEJO)
+        w.writerows(filas)
+    anios = {f[0] for f in filas}
+    print(f"espejo: {len(filas)} filas, {min(anios)}..{max(anios)} -> "
+          f"{_corto(SNAPSHOT_ESPEJO)} ({SNAPSHOT_ESPEJO.stat().st_size / 1024:.0f} KB)")
+    return SNAPSHOT_ESPEJO
+
+
+def load_espejo() -> int:
+    """Carga `trade_mirror` desde su snapshot. 0 si no hay archivo."""
+    if not SNAPSHOT_ESPEJO.exists():
+        return 0
+    con = sqlite3.connect(DB_PATH)
+    try:
+        with gzip.open(SNAPSHOT_ESPEJO, "rt", newline="", encoding="utf-8") as fh:
+            r = csv.reader(fh)
+            cab = next(r, None)
+            if tuple(cab or ()) != COLUMNAS_ESPEJO:
+                raise ValueError(f"snapshot espejo con cabecera inesperada: {cab}")
+            lote, n = [], 0
+            for fila in r:
+                # year/códigos a int, valores a float o None: el CSV no tiene tipos
+                # y guardar "" como 0.0 convertiría un dato ausente en comercio nulo.
+                lote.append((int(fila[0]), int(fila[1]), int(fila[2]), fila[3],
+                             *(float(v) if v else None for v in fila[4:7])))
+                if len(lote) >= 5000:
+                    con.executemany(
+                        "INSERT OR REPLACE INTO trade_mirror "
+                        f"({', '.join(COLUMNAS_ESPEJO)}) VALUES (?,?,?,?,?,?,?)", lote)
+                    n += len(lote); lote = []
+            if lote:
+                con.executemany(
+                    "INSERT OR REPLACE INTO trade_mirror "
+                    f"({', '.join(COLUMNAS_ESPEJO)}) VALUES (?,?,?,?,?,?,?)", lote)
+                n += len(lote)
+        con.commit()
+    finally:
+        con.close()
     return n
 
 
@@ -172,6 +252,8 @@ def main(argv: list[str]) -> None:
     cmd = argv[0] if argv else "info"
     if cmd == "export":
         export(force="--force" in argv)
+    elif cmd == "export-espejo":
+        export_espejo()
     elif cmd == "load":
         print(f"cargadas {load()} obs en {_corto(DB_PATH)}")
     elif cmd == "info":
@@ -184,6 +266,9 @@ def main(argv: list[str]) -> None:
         print(f"observac.  : {m['observaciones']}")
         for sid, c in m.get("series", {}).items():
             print(f"  {sid:16} {c['obs']:6} obs  [{c['desde']}..{c['hasta']}]")
+        if SNAPSHOT_ESPEJO.exists():
+            print(f"espejo     : {_corto(SNAPSHOT_ESPEJO)} "
+                  f"({SNAPSHOT_ESPEJO.stat().st_size / 1024:.0f} KB)")
     else:
         raise SystemExit(__doc__)
 

@@ -36,11 +36,18 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
   dossier antes de mostrarse. Cubre series, comparación entre gobiernos y los resultados
   econométricos (VAR con bandas, pass-through, nowcast). Sin API key el dashboard funciona
   igual. Ver [`docs/capa_ia.md`](docs/capa_ia.md).
+- ✅ **Etapa 9 — Comercio espejo (`platec/comercio_espejo.py`).** Panel bilateral de UN
+  Comtrade (1992-2025, 208 declarantes) para medir la discrepancia entre lo que Argentina
+  declara comerciar y lo que declara la contraparte: el insumo de la literatura de flujos
+  financieros ilícitos por mala facturación. El ajuste CIF/FOB **se estima por país** en vez
+  de imponer el 10% fijo de la literatura. Ver
+  [`docs/comercio_espejo.md`](docs/comercio_espejo.md).
 
 ## Estructura
 
 ```
-platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gobiernos, narrador)
+platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gobiernos,
+            narrador, comercio_espejo)
 dashboard/  app Streamlit (app.py) + bootstrap de datos
 scripts/    utilidades ejecutables (validate_sources, init_db, ingest, snapshot, analisis)
 sql/        DDL del esquema (schema.sql)
@@ -55,7 +62,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (132 casos)
+python3 -m pytest                        # suite de tests (168 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -63,7 +70,9 @@ Para reconstruir desde las fuentes en vez de usar el snapshot:
 ```bash
 python3 scripts/init_db.py               # crea la base y siembra el catálogo
 python3 scripts/ingest.py                # descarga el histórico de las 22 series
+python3 scripts/ingest_comtrade.py       # panel de comercio espejo (anual, ~2 min)
 python3 scripts/snapshot.py export       # congela el histórico para versionarlo
+python3 scripts/snapshot.py export-espejo  # congela el panel espejo (aparte: es anual)
 ```
 
 ### Tests
@@ -101,6 +110,46 @@ Dos detalles que muerden:
 
 Los nueve períodos agrupan la crisis 2001-2003 en un solo tramo: son cinco presidencias en
 dieciocho meses y separarlas daría períodos de días, sin sentido estadístico.
+
+### Comercio espejo: la discrepancia no es flete
+`platec/comercio_espejo.py` compara lo que Argentina declara exportar a cada socio contra lo
+que ese socio declara importar de Argentina (y viceversa). Tres cosas que deciden si esa
+comparación mide algo:
+
+1. **El ajuste CIF/FOB no es un 10% fijo.** Es el supuesto estándar de la literatura y en el
+   agregado no está mal —la mediana calculada sobre los datos da +7,5%—, pero por socio va de
+   **+3,9% en Brasil a +12,5% en Australia**: es flete, y el flete es distancia. Aplicarle 10%
+   a un vecino con frontera terrestre sobrecorrige seis puntos y **da vuelta el signo**. Acá
+   el factor se estima por país declarante.
+2. **`fobvalue = 0` no es un FOB de cero.** Comtrade devuelve cero —no `null`— para los países
+   que no calculan esa valoración. China informa su importación de 2020 desde Argentina como
+   CIF 6.814 millones y FOB 0. Tomar ese cero en serio llevaba la discrepancia del año a
+   −27.000 millones: el 40% de las exportaciones argentinas, inventado por un cero.
+3. **El signo no es el mismo en los dos canales.** Sacar divisas es declarar *de menos* al
+   exportar y *de más* al importar. Cada canal lleva su orientación para que `gap > 0` sea
+   salida en los dos; sumarlos sin eso mezcla peras con manzanas.
+
+Lo que devuelve es una **discrepancia**, no una estimación de flujos ilícitos: el flete es la
+única fuente de brecha lícita que los datos permiten corregir con precisión, y quedan afuera
+las reexportaciones, los desfases de timing y la clasificación.
+
+**El contraste contra la brecha cambiaria.** Si la discrepancia mide arbitraje, tiene que
+crecer con el premio del arbitraje. En panel año × socio con efectos fijos, error agrupado
+por año y p-valor por *wild cluster bootstrap* (con quince clusters el p asintótico daba
+0,0008 contra 0,025 del bootstrap: treinta veces más chico), el resultado es **asimétrico**:
+
+| Canal | β por punto de brecha | p |
+|---|---|---|
+| Exportador (subfacturar exportaciones) | **+0,059** | 0,025 |
+| Importador (sobrefacturar importaciones) | +0,009 | 0,679 |
+
+El canal exportador responde en las cuatro especificaciones —incluida la submuestra sin
+ninguna imputación CIF/FOB, donde es más grande— y el importador es un cero limpio en todas.
+Contra la lectura habitual de la prensa, que pone el foco en la sobrefacturación de
+importaciones: **sobrefacturar exige acceso al dólar oficial, que es lo que el cepo raciona;
+subfacturar exportaciones no exige permiso de nadie.** El control de cambios no elimina el
+arbitraje, lo empuja hacia el lado que no controla. Detalle y límites en
+[`docs/comercio_espejo.md`](docs/comercio_espejo.md).
 
 ### La capa de IA no puede inventar un número
 `platec/narrador.py` redacta las lecturas con un LLM, pero el modelo **no calcula**: recibe
