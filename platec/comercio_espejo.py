@@ -78,6 +78,14 @@ SOCIOS = {
 # país entero si no se acota.
 FACTOR_MIN, FACTOR_MAX = 1.0, 1.5
 
+# Un año se marca PROVISORIO cuando el número de socios apareados cae por debajo de
+# esta fracción de la mediana del canal. No es prolijidad: Comtrade publica con
+# rezago y los últimos años tienen menos países reportando, no menos comercio. En
+# 2025 se aparean 51 socios contra ~70 de un año cerrado, y con un cuarto de los
+# socios faltando el agregado da vuelta de signo. Un año así no es un dato bajo:
+# es un dato incompleto, y mostrarlo como titular sería mentir por omisión.
+COBERTURA_SOCIOS_MINIMA = 0.85
+
 
 def _connect() -> sqlite3.Connection:
     con = sqlite3.connect(DB_PATH)
@@ -300,6 +308,10 @@ def por_anio(disc: pd.DataFrame | None = None, **kw) -> pd.DataFrame:
     `cobertura_fob` es la fracción del valor cuyo FOB salió de un reporte y no de
     una estimación. Es la bandera de calidad de esta medida: con cobertura baja,
     el agregado depende del factor CIF/FOB imputado y hay que decirlo.
+
+    `provisorio` marca los años con pocos socios apareados respecto de la mediana
+    del canal — típicamente los dos últimos, porque Comtrade publica con rezago.
+    Ahí falta comercio, no hay menos comercio.
     """
     d = discrepancia(**kw) if disc is None else disc
     if d.empty:
@@ -315,6 +327,11 @@ def por_anio(disc: pd.DataFrame | None = None, **kw) -> pd.DataFrame:
     g["gap_pct"] = g["gap"] / g["ar_declara"] * 100
     g["cobertura_fob"] = g["_rep"] / g["ar_declara"]
     g = g.drop(columns="_rep")
+    # Bandera de completitud por composición, comparando cada año contra la mediana
+    # de socios apareados de SU canal (el exportador aparea más socios que el
+    # importador, así que un umbral común castigaría al importador por existir).
+    mediana = g.groupby("canal")["socios"].transform("median")
+    g["provisorio"] = g["socios"] < COBERTURA_SOCIOS_MINIMA * mediana
     for c in ("ar_declara", "socio_declara", "gap"):
         g[c] = g[c] / 1e6            # a millones de USD, como el resto del proyecto
     return g.reset_index()

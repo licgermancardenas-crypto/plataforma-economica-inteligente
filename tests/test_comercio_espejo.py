@@ -453,3 +453,43 @@ def test_la_brecha_anual_tiene_los_picos_conocidos():
     b = ce.brecha_anual("blue")
     assert b.loc[2017] < 10, "2017 no tuvo cepo: la brecha fue casi nula"
     assert b.loc[2023] > 60, "2023 estuvo en pleno cepo II"
+
+
+def test_un_ano_con_pocos_socios_se_marca_provisorio():
+    """
+    Comtrade publica con rezago: en el último año faltan países, no falta comercio.
+    En los datos reales 2025 aparea 51 socios contra ~70 de un año cerrado, y con ese
+    cuarto faltante el agregado cambia de signo. Mostrarlo como el dato del año sería
+    mentir por omisión.
+    """
+    filas = []
+    for anio in range(2015, 2025):                      # años completos
+        for s in range(20):
+            filas.append((anio, AR, 100 + s, "X", 100e6, 100e6, None))
+            filas.append((anio, 100 + s, AR, "M", 110e6, 110e6, None))
+    for s in range(5):                                  # 2025: solo 5 socios
+        filas.append((2025, AR, 100 + s, "X", 100e6, 100e6, None))
+        filas.append((2025, 100 + s, AR, "M", 110e6, 110e6, None))
+
+    g = ce.por_anio(ce.discrepancia(df=_panel(filas)))
+    prov = dict(zip(g["anio"], g["provisorio"]))
+    assert prov[2025] is True or prov[2025] == True     # noqa: E712
+    assert not any(v for a, v in prov.items() if a < 2025), "los años completos no se marcan"
+
+
+def test_el_umbral_de_provisorio_es_por_canal():
+    """
+    El canal exportador aparea más socios que el importador. Un umbral común
+    castigaría al importador por existir, igual que contar meses castigaba a las
+    series trimestrales en el comparador de gobiernos.
+    """
+    filas = []
+    for anio in range(2018, 2024):
+        for s in range(20):                             # 20 socios en el exportador
+            filas.append((anio, AR, 100 + s, "X", 100e6, 100e6, None))
+            filas.append((anio, 100 + s, AR, "M", 110e6, 110e6, None))
+        for s in range(6):                              # 6 socios en el importador
+            filas.append((anio, AR, 200 + s, "M", 110e6, 100e6, 110e6))
+            filas.append((anio, 200 + s, AR, "X", 90e6, 90e6, None))
+    g = ce.por_anio(ce.discrepancia(df=_panel(filas)))
+    assert not g["provisorio"].any(), "todos los años son completos en su propio canal"

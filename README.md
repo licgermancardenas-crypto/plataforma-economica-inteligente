@@ -34,13 +34,13 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
   con LLM vía API, con **verificación numérica**: el modelo no calcula, recibe un dossier
   cerrado de hechos ya computados y cada número de su texto se contrasta contra ese
   dossier antes de mostrarse. Cubre series, comparación entre gobiernos y los resultados
-  econométricos (VAR con bandas, pass-through, nowcast). Sin API key el dashboard funciona
-  igual. Ver [`docs/capa_ia.md`](docs/capa_ia.md).
+  econométricos (VAR con bandas, pass-through, nowcast) y el comercio espejo. Sin API key
+  el dashboard funciona igual. Ver [`docs/capa_ia.md`](docs/capa_ia.md).
 - ✅ **Etapa 9 — Comercio espejo (`platec/comercio_espejo.py`).** Panel bilateral de UN
   Comtrade (1992-2025, 208 declarantes) para medir la discrepancia entre lo que Argentina
   declara comerciar y lo que declara la contraparte: el insumo de la literatura de flujos
   financieros ilícitos por mala facturación. El ajuste CIF/FOB **se estima por país** en vez
-  de imponer el 10% fijo de la literatura. Ver
+  de imponer el 10% fijo de la literatura. Página propia en el dashboard. Ver
   [`docs/comercio_espejo.md`](docs/comercio_espejo.md).
 
 ## Estructura
@@ -62,7 +62,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (168 casos)
+python3 -m pytest                        # suite de tests (176 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:

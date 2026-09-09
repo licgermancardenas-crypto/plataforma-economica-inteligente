@@ -551,3 +551,56 @@ def test_los_dossiers_econometricos_no_arrastran_statsmodels_ni_sklearn():
         cwd=Path(__file__).resolve().parent.parent,
         capture_output=True, text=True, check=True)
     assert r.stdout.strip() == "False"
+
+
+# --- dossier de comercio espejo -------------------------------------------
+def _agregado_falso():
+    return {"exportador": {"gap": 1842.0, "gap_pct": 2.6, "cobertura_fob": 0.51},
+            "importador": {"gap": -367.0, "gap_pct": -0.7, "cobertura_fob": 0.48}}
+
+
+def _contrastes_falsos():
+    return {"exportador": {"beta": 0.0589, "se": 0.0176, "p_wcb": 0.025, "anios": 15},
+            "importador": {"beta": 0.0086, "se": 0.0188, "p_wcb": 0.681, "anios": 15}}
+
+
+def test_el_dossier_de_espejo_trae_los_dos_canales_y_su_contraste():
+    d = nar.dossier_espejo(_agregado_falso(), _contrastes_falsos(), 1.0746, 70)
+    etiquetas = " ".join(h.etiqueta for h in d.hechos)
+    assert "exportador" in etiquetas and "importador" in etiquetas
+    assert "p-valor por bootstrap" in etiquetas
+
+
+def test_el_efecto_a_brecha_de_cien_viene_precalculado():
+    """Multiplicar el coeficiente por cien es una cuenta, y el modelo la haría."""
+    d = nar.dossier_espejo(_agregado_falso(), _contrastes_falsos(), 1.0746, 70)
+    h = next(h for h in d.hechos
+             if h.etiqueta.startswith("Discrepancia adicional del canal exportador"))
+    assert h.valor == pytest.approx(5.89)
+    assert nar.verificar("Con brecha de 100% la discrepancia sube 5,9 pp.", d) == []
+
+
+def test_el_dossier_de_espejo_avisa_que_no_es_una_estimacion_de_flujos_ilicitos():
+    d = nar.dossier_espejo(_agregado_falso(), _contrastes_falsos(), 1.0746, 70)
+    assert any("no una estimación de flujos ilícitos" in c for c in d.caveats)
+    assert any("NO una identificación causal" in c for c in d.caveats)
+    assert any("quince años" in c or "Quince clusters" in c for c in d.caveats)
+
+
+def test_el_factor_cif_fob_entra_como_porcentaje_y_no_como_factor():
+    """1,0746 escrito como '7,5%' sería un reescalado; el −1 y el ×100 van en Python."""
+    d = nar.dossier_espejo(_agregado_falso(), _contrastes_falsos(), 1.0746, 70)
+    h = next(h for h in d.hechos if h.etiqueta.startswith("Factor CIF/FOB global"))
+    assert h.valor == pytest.approx(7.46) and h.unidad == "%"
+    assert nar.verificar("El factor global es 7,5%.", d) == []
+
+
+def test_todo_numero_del_dossier_de_espejo_se_verifica_contra_si_mismo():
+    d = nar.dossier_espejo(_agregado_falso(), _contrastes_falsos(), 1.0746, 70)
+    for h in d.hechos:
+        assert nar.verificar(h.formateado(), d) == [], f"{h.etiqueta} no se verifica"
+
+
+def test_sin_agregado_el_dossier_de_espejo_falla_en_vez_de_redactar_sobre_nada():
+    with pytest.raises(ValueError, match="discrepancia agregada"):
+        nar.dossier_espejo({}, _contrastes_falsos(), 1.0746, 70)

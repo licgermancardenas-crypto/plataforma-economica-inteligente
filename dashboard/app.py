@@ -1227,13 +1227,328 @@ def pagina_gobiernos():
 
 
 # ---------------------------------------------------------------------------
+# Página: Comercio espejo
+# ---------------------------------------------------------------------------
+# Los dos canales usan PALETA en ORDEN FIJO (slot 0 = exportador, slot 1 =
+# importador) y no un color por ranking: si mañana se filtra un canal, el que
+# queda conserva su color. El signo NO se codifica con color —eso chocaría con la
+# identidad del canal— sino con la posición respecto del cero, que es una señal
+# más fuerte. Verde y rojo quedan reservados para la semántica alza/baja del resto
+# del dashboard y no se usan acá como identidad.
+CANAL_COLOR = {"exportador": PALETA[0], "importador": PALETA[1]}
+CANAL_NOMBRE = {"exportador": "Exportador (subfacturar exportaciones)",
+                "importador": "Importador (sobrefacturar importaciones)"}
+
+# Los mismos cortes de régimen que usa el VAR diario, para leer la serie contra el
+# cepo en vez de contra el calendario.
+CEPOS = [("Cepo I", 2011.5, 2015.9), ("Cepo II", 2019.7, 2023.9)]
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando el panel de comercio espejo...")
+def _espejo(desde: int):
+    from platec import comercio_espejo as ce
+
+    agregado = ce.por_anio(desde=desde)
+    factores = ce.factores_cif_fob()
+    detalle = ce.discrepancia(desde=desde)
+    return agregado, factores, float(ce.factor_global()), detalle
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el contraste contra la brecha (bootstrap)...")
+def _contraste(fuente: str, solo_reportado: bool):
+    from platec import comercio_espejo as ce
+
+    out = {}
+    for canal in ("exportador", "importador"):
+        try:
+            out[canal] = ce.contraste_brecha(canal, fuente=fuente,
+                                             solo_reportado=solo_reportado, repl=999)
+        except ValueError:
+            pass
+    return out, ce.brecha_anual(fuente)
+
+
+def _bandas_cepo(fig: go.Figure) -> go.Figure:
+    """Sombreado de los períodos con control de cambios."""
+    for nombre, x0, x1 in CEPOS:
+        fig.add_vrect(x0=x0, x1=x1, fillcolor="rgba(255,255,255,.05)",
+                      line_width=0, layer="below",
+                      annotation_text=nombre, annotation_position="top left",
+                      annotation_font=dict(size=10, color="#94a3b8"))
+    return fig
+
+
+def pagina_espejo():
+    st.markdown(
+        '<div class="hero"><h1>🌐 Comercio espejo</h1>'
+        '<p>Lo que Argentina declara comerciar contra lo que declara la contraparte · '
+        'detalle en docs/comercio_espejo.md</p></div>', unsafe_allow_html=True)
+
+    c_a, c_b = st.columns([2, 1])
+    desde = c_a.select_slider("Desde", list(range(1995, 2021, 5)), value=2005)
+    fuente = c_b.selectbox("Brecha de referencia", ["blue", "ccl"],
+                           help="El blue arranca en 2011 y el CCL en 2013: dos años más "
+                                "de muestra, que sobre quince no es un detalle.")
+
+    agregado, factores, f_global, detalle = _espejo(desde)
+    if agregado.empty:
+        st.warning("No hay panel de comercio espejo en la base. "
+                   "Correr `python3 scripts/ingest_comtrade.py`.")
+        return
+
+    # El titular va sobre el último año COMPLETO, no sobre el último a secas: Comtrade
+    # publica con rezago y en los últimos años faltan países, no falta comercio. En 2025
+    # se aparean 51 socios contra ~70, y con ese cuarto faltante el agregado cambia de
+    # signo. Los años provisorios se muestran igual, pero marcados.
+    # `provisorio` viene por (año, canal), así que un año es completo solo si lo es en
+    # TODOS sus canales: 2025 aparea bien en el importador y mal en el exportador, y
+    # tomarlo como completo por el canal bueno lo dejaría a la vez adentro y afuera.
+    por_anio_prov = agregado.groupby("anio")["provisorio"].any()
+    completos = por_anio_prov[~por_anio_prov].index
+    ultimo = int(max(completos)) if len(completos) else int(agregado["anio"].max())
+    provisorios = sorted(int(a) for a in por_anio_prov[por_anio_prov].index)
+    fila_ult = {r["canal"]: r for _, r in agregado[agregado["anio"] == ultimo].iterrows()}
+
+    # --- KPIs -------------------------------------------------------------
+    seccion(f"Discrepancia en {ultimo}")
+    k = st.columns(3)
+    for col, canal in zip(k, ("exportador", "importador")):
+        r = fila_ult.get(canal)
+        with col, st.container(border=True):
+            st.markdown(f"**{CANAL_NOMBRE[canal].split(' (')[0]}**")
+            if r is None:
+                st.caption("sin dato")
+                continue
+            st.metric("Discrepancia", f"{r['gap']:,.0f} M USD",
+                      f"{r['gap_pct']:+.1f}% del comercio del canal", delta_color="off")
+            st.caption(f"{int(r['socios'])} socios apareados · "
+                       f"{r['cobertura_fob']:.0%} del valor con FOB reportado")
+    with k[2], st.container(border=True):
+        st.markdown("**Ajuste CIF/FOB**")
+        st.metric("Factor global estimado", f"+{(f_global - 1) * 100:.1f}%",
+                  "la literatura supone +10% fijo", delta_color="off")
+        st.caption("Es flete y seguro. Se calcula de los países que informan las dos "
+                   "valoraciones; no se supone.")
+
+    st.caption("**Signo:** en los dos canales, positivo = salida de divisas. Sacar dólares "
+               "es declarar *de menos* al exportar y *de más* al importar, así que cada "
+               "canal lleva su propia orientación.")
+    if provisorios:
+        st.info(
+            f"El titular es {ultimo}, el último año **completo**. "
+            f"{', '.join(str(a) for a in provisorios)} "
+            f"{'está' if len(provisorios) == 1 else 'están'} marcado"
+            f"{'' if len(provisorios) == 1 else 's'} como provisorio"
+            f"{'' if len(provisorios) == 1 else 's'}: Comtrade publica con alrededor de un "
+            "año de rezago y ahí todavía faltan países reportando. Falta comercio "
+            "declarado, no hay menos comercio — el agregado de esos años puede incluso "
+            "cambiar de signo.")
+
+    # --- Serie anual ------------------------------------------------------
+    st.divider()
+    seccion("La discrepancia año a año")
+    with st.container(border=True):
+        fig = go.Figure()
+        for canal in ("exportador", "importador"):
+            sub = agregado[agregado["canal"] == canal]
+            # Los años provisorios se rayan además de aclararse: la textura sobrevive
+            # a la impresión en blanco y negro y a cualquier daltonismo, la opacidad no.
+            fig.add_trace(go.Bar(
+                x=sub["anio"], y=sub["gap"],
+                name=CANAL_NOMBRE[canal].split(" (")[0],
+                marker=dict(
+                    color=CANAL_COLOR[canal],
+                    opacity=[0.45 if pv else 1.0 for pv in sub["provisorio"]],
+                    pattern=dict(shape=["/" if pv else "" for pv in sub["provisorio"]],
+                                 solidity=0.35, fgcolor="#0b1220")),
+                customdata=np.where(sub["provisorio"], " · provisorio", ""),
+                hovertemplate="%{x}%{customdata}<br>%{y:,.0f} M USD<extra></extra>"))
+        fig.add_hline(y=0, line=dict(color="rgba(255,255,255,.28)", width=1))
+        _bandas_cepo(fig)
+        _estilo(fig, height=380, leyenda=True)
+        _titulo(fig, "Discrepancia espejo por canal (millones de dólares)")
+        fig.update_layout(barmode="group", bargap=0.28, bargroupgap=0.06,
+                          yaxis_title="millones de dólares", xaxis_title=None)
+        st.plotly_chart(fig, **ANCHO)
+        st.caption(
+            "Las bandas sombreadas son los períodos con control de cambios. La escala es "
+            "el nivel en dólares, así que parte del movimiento es el tamaño del comercio: "
+            "el contraste de más abajo usa la discrepancia como **porcentaje** del comercio "
+            "de cada par, que es lo comparable entre años. Las barras **rayadas y claras** "
+            "son años provisorios: todavía faltan países por reportar.")
+
+    # --- El ajuste CIF/FOB ------------------------------------------------
+    st.divider()
+    seccion("El ajuste que decide la medición")
+    c1, c2 = st.columns([3, 2])
+    with c1, st.container(border=True):
+        principales = [c for c in (76, 152, 858, 68, 600, 842, 156, 276, 724, 380,
+                                   392, 410, 528, 36) if c in factores.index]
+        from platec import comercio_espejo as ce
+        f = (pd.Series({ce.nombre_socio(c): (factores[c] - 1) * 100 for c in principales})
+             .sort_values())
+        fig = go.Figure(go.Bar(
+            x=f.values, y=f.index, orientation="h",
+            marker=dict(color=PALETA[0]),
+            text=[f"{v:+.1f}%" for v in f.values], textposition="outside",
+            textfont=dict(color="#cbd5e1", size=11),
+            hovertemplate="%{y}: %{x:+.1f}%<extra></extra>"))
+        fig.add_vline(x=10, line=dict(color=COLOR["ambar"], width=1.5, dash="dot"),
+                      annotation_text="supuesto de la literatura (+10%)",
+                      annotation_position="top",
+                      annotation_font=dict(size=10, color=COLOR["ambar"]))
+        _estilo(fig, height=430, leyenda=False)
+        _titulo(fig, "Factor CIF/FOB estimado por país declarante")
+        fig.update_layout(xaxis_title="flete y seguro sobre el valor FOB (%)",
+                          yaxis_title=None)
+        fig.update_xaxes(range=[0, max(14, float(f.max()) * 1.35)])
+        st.plotly_chart(fig, **ANCHO)
+    with c2, st.container(border=True):
+        st.subheader("Por qué no es un 10% fijo")
+        st.markdown(
+            "El flete **es distancia**. Los vecinos con frontera terrestre están en un "
+            "dígito bajo y los socios del otro lado del mundo, en dos dígitos.\n\n"
+            "Aplicarle el 10% canónico a Brasil **sobrecorrige seis puntos y puede dar "
+            "vuelta el signo** de la discrepancia: convierte una subfacturación en un "
+            "superávit espejo que no existe.\n\n"
+            "Acá el factor se estima con la mediana de los años en que cada país informa "
+            "las dos valoraciones. Cuando nunca las informa, recién ahí se usa la mediana "
+            "global — que también se calcula.")
+        st.caption("Un cociente CIF/FOB fuera de [1,0 ; 1,5] se descarta: en los datos de "
+                   "2022 hay un registro con 9.993%, que es un error de reporte y no un "
+                   "flete. Sin acotarlo, un solo registro corre la mediana de un país.")
+
+    # --- El contraste -----------------------------------------------------
+    st.divider()
+    seccion("¿La discrepancia responde al precio del arbitraje?")
+    solo_rep = st.checkbox(
+        "Usar solo los pares sin ninguna imputación CIF/FOB", value=False,
+        help="Deja únicamente los pares en los que AMBOS lados informaron su propio FOB. "
+             "Si el resultado sobrevive ahí, no es un artefacto del ajuste.")
+    contrastes, brecha = _contraste(fuente, solo_rep)
+
+    if not contrastes:
+        st.info("Muestra insuficiente para el contraste con esta selección.")
+    else:
+        cc1, cc2 = st.columns([3, 2])
+        with cc1, st.container(border=True):
+            d = detalle.copy()
+            d["brecha"] = d["anio"].map(brecha)
+            d = d.dropna(subset=["brecha"])
+            fig = go.Figure()
+            for canal in ("exportador", "importador"):
+                sub = d[d["canal"] == canal]
+                if sub.empty:
+                    continue
+                por_anio = sub.groupby("anio").agg(
+                    brecha=("brecha", "first"),
+                    gap_pct=("gap_pct", "median")).reset_index()
+                fig.add_trace(go.Scatter(
+                    x=por_anio["brecha"], y=por_anio["gap_pct"], mode="markers",
+                    name=CANAL_NOMBRE[canal].split(" (")[0],
+                    marker=dict(size=11, color=CANAL_COLOR[canal],
+                                line=dict(width=2, color="#0b1220")),
+                    customdata=por_anio["anio"],
+                    hovertemplate="%{customdata}<br>brecha %{x:.0f}%<br>"
+                                  "discrepancia %{y:+.1f}%<extra></extra>"))
+                r = contrastes.get(canal)
+                if r is not None:
+                    xs = np.linspace(por_anio["brecha"].min(), por_anio["brecha"].max(), 2)
+                    centro = por_anio["gap_pct"].mean() - r["beta"] * por_anio["brecha"].mean()
+                    fig.add_trace(go.Scatter(
+                        x=xs, y=centro + r["beta"] * xs, mode="lines",
+                        line=dict(color=CANAL_COLOR[canal], width=2,
+                                  dash="solid" if r["p_wcb"] < 0.10 else "dot"),
+                        showlegend=False, hoverinfo="skip"))
+            fig.add_hline(y=0, line=dict(color="rgba(255,255,255,.28)", width=1))
+            _estilo(fig, height=400, leyenda=True)
+            _titulo(fig, "Discrepancia mediana del año contra brecha cambiaria")
+            fig.update_layout(xaxis_title="brecha cambiaria promedio del año (%)",
+                              yaxis_title="discrepancia (% del comercio del par)")
+            st.plotly_chart(fig, **ANCHO)
+            st.caption(
+                "Cada punto es un año. La recta es la pendiente estimada en el panel "
+                "completo (no sobre estas medianas): **llena** si el efecto pasa el "
+                "bootstrap al 10%, **punteada** si no. Los puntos son medianas por año "
+                "solo para que el gráfico sea legible.")
+        with cc2, st.container(border=True):
+            st.subheader("Panel con efectos fijos")
+            for canal, r in contrastes.items():
+                signif = r["p_wcb"] < 0.05
+                st.metric(f"β · canal {canal}", f"{r['beta']:+.4f}",
+                          f"p={r['p_wcb']:.3f} ({'significativo' if signif else 'no significativo'})",
+                          delta_color="off")
+                st.caption(f"se={r['se']:.4f} · n={r['n']:,} · {r['unidades']} socios · "
+                           f"{r['anios']} años")
+            st.markdown(
+                "**β** = puntos porcentuales de discrepancia por cada punto de brecha. "
+                "Pasar de brecha nula a 100% agrega "
+                f"**{contrastes['exportador']['beta'] * 100:.1f} pp** en el canal exportador.")
+
+        with st.container(border=True):
+            st.markdown("**La asimetría es el hallazgo**")
+            st.markdown(
+                "La lectura habitual pone el foco en la **sobrefacturación de "
+                "importaciones**. Los datos dicen lo contrario: ese canal no responde a la "
+                "brecha y el exportador sí.\n\n"
+                "Tiene una explicación institucional directa: **sobrefacturar una "
+                "importación exige acceso al dólar oficial**, que es justamente lo que el "
+                "cepo raciona vía DJAI, SIMI o SIRA. **Subfacturar una exportación no exige "
+                "permiso de nadie**: alcanza con dejar la diferencia afuera. El canal que "
+                "escala con el premio del arbitraje es el que no necesita autorización.\n\n"
+                "El control de cambios no elimina el arbitraje: lo empuja hacia el lado "
+                "que no controla.")
+            st.caption(
+                "**Qué no prueba.** No hay identificación causal: los años de brecha alta "
+                "son también años de crisis y controles. Quince clusters son pocos incluso "
+                "con bootstrap, así que un p entre 0,03 y 0,06 es sugerente y no "
+                "concluyente. Y sigue siendo una *discrepancia*: reexportaciones, timing y "
+                "clasificación no se corrigen.")
+
+    # --- Detalle por socio ------------------------------------------------
+    st.divider()
+    seccion("Por socio")
+    anio_sel = st.select_slider("Año", sorted(detalle["anio"].unique()), value=ultimo)
+    sub = detalle[detalle["anio"] == anio_sel].copy()
+    with st.container(border=True):
+        sub["Argentina declara"] = (sub["ar_declara"] / 1e6).round(0)
+        sub["El socio declara"] = (sub["socio_declara"] / 1e6).round(0)
+        sub["Discrepancia"] = (sub["gap"] / 1e6).round(0)
+        sub["%"] = sub["gap_pct"].round(1)
+        sub["FOB del socio"] = sub["origen_socio"]
+        tabla_socios = (sub[["socio", "canal", "Argentina declara", "El socio declara",
+                             "Discrepancia", "%", "FOB del socio"]]
+                        .sort_values("Discrepancia", key=abs, ascending=False)
+                        .rename(columns={"socio": "Socio", "canal": "Canal"}))
+        st.dataframe(tabla_socios.head(30), **ANCHO, hide_index=True)
+        st.caption(
+            "En millones de dólares, ambos lados llevados a FOB. **FOB del socio** dice si "
+            "esa cifra es la que reportó el país o una imputada con el factor: una "
+            "discrepancia grande sobre un valor imputado pesa menos que una sobre dos "
+            "cifras reportadas. Se excluyen los pares que comercian menos de 50 millones "
+            "al año, donde un solo embarque a caballo del cierre distorsiona el porcentaje.")
+
+    # --- Lectura del analista --------------------------------------------
+    if contrastes:
+        st.divider()
+        with st.container(border=True):
+            panel_narrador(
+                lambda: nar.dossier_espejo(
+                    {c: fila_ult[c] for c in fila_ult},
+                    contrastes, f_global,
+                    int(detalle[detalle["anio"] == ultimo]["socio_code"].nunique())),
+                clave=f"espejo_{desde}_{fuente}_{solo_rep}",
+                titulo="Lectura del analista — comercio espejo y brecha")
+
+# ---------------------------------------------------------------------------
 # Navegación
 # ---------------------------------------------------------------------------
 st.sidebar.markdown("# 📊 Plataforma Económica")
 st.sidebar.caption("Monitoreo · Análisis · Econometría")
 st.sidebar.divider()
 pagina = st.sidebar.radio(
-    "Navegación", ["🏠  Cockpit", "🔎  Explorador", "🏛  Gobiernos", "🧮  Econometría"],
+    "Navegación", ["🏠  Cockpit", "🔎  Explorador", "🏛  Gobiernos", "🧮  Econometría",
+                   "🌐  Comercio espejo"],
     label_visibility="collapsed")
 st.sidebar.divider()
 st.sidebar.caption(f"📅 Datos hasta {_fecha_datos()}")
@@ -1250,5 +1565,7 @@ elif "Explorador" in pagina:
     pagina_explorador()
 elif "Gobiernos" in pagina:
     pagina_gobiernos()
-else:
+elif "Econometría" in pagina:
     pagina_econometria()
+else:
+    pagina_espejo()

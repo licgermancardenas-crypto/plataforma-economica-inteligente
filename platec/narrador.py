@@ -548,6 +548,84 @@ def dossier_nowcast(nc, nc_actual: float, infl_ultima: float, ph=None,
                   "cuánto vale esa estimación a la luz de su error fuera de muestra."))
 
 
+def dossier_espejo(agregado, contrastes: dict, factor_global_: float,
+                   socios_apareados: int) -> Dossier:
+    """
+    Dossier del comercio espejo: la discrepancia del último año más el contraste
+    contra la brecha cambiaria.
+
+    `agregado` es una fila de `comercio_espejo.por_anio` por canal (dict canal →
+    dict con gap, gap_pct, cobertura_fob); `contrastes`, el dict canal → resultado
+    de `comercio_espejo.contraste_brecha`.
+    """
+    if not agregado:
+        raise ValueError("no hay discrepancia agregada para redactar")
+
+    hechos: list[Hecho] = []
+    for canal, fila in agregado.items():
+        hechos.append(Hecho(f"Discrepancia del canal {canal} en el último año cerrado",
+                            float(fila["gap"]), "millones de dólares", 0))
+        hechos.append(Hecho(f"Esa discrepancia como porcentaje del comercio del canal "
+                            f"{canal}", float(fila["gap_pct"]), "%", 1))
+        hechos.append(Hecho(f"Cobertura de FOB reportado del canal {canal}",
+                            float(fila["cobertura_fob"]) * 100, "%", 0))
+
+    for canal, r in contrastes.items():
+        hechos.append(Hecho(f"Efecto de la brecha sobre la discrepancia del canal {canal} "
+                            f"(por cada punto de brecha)", float(r["beta"]), "pp", 3))
+        hechos.append(Hecho(f"Error estándar de ese efecto ({canal})", float(r["se"]), "", 3))
+        hechos.append(Hecho(f"p-valor por bootstrap de ese efecto ({canal})",
+                            float(r["p_wcb"]), "", 3))
+        # Precalculado: multiplicar el coeficiente por cien es una cuenta, y el
+        # modelo la haría para expresar el efecto en una brecha de 100%.
+        hechos.append(Hecho(f"Discrepancia adicional del canal {canal} al pasar de brecha "
+                            f"nula a brecha de 100%", float(r["beta"]) * 100, "pp", 1))
+        hechos.append(Hecho(f"Años usados en el contraste ({canal})",
+                            float(r["anios"]), "años", 0))
+
+    # El punto de referencia entra como hecho aunque sea una constante elegida por
+    # nosotros: la etiqueta de arriba dice "brecha de 100%", así que el modelo va a
+    # escribir ese 100 sí o sí. Sin él en el dossier, toda lectura correcta de ese
+    # efecto saldría marcada — un falso positivo garantizado, no una defensa.
+    hechos.append(Hecho("Brecha de referencia usada para expresar ese efecto",
+                        100.0, "%", 0))
+    hechos.append(Hecho("Socios comerciales apareados", float(socios_apareados), "", 0))
+    hechos.append(Hecho("Factor CIF/FOB global estimado",
+                        (factor_global_ - 1) * 100, "%", 1))
+
+    caveats = [
+        "Lo medido es una DISCREPANCIA entre lo que declara Argentina y lo que declara "
+        "la contraparte, no una estimación de flujos ilícitos. Solo se corrige el flete "
+        "(CIF contra FOB); quedan sin corregir las reexportaciones vía terceros países, "
+        "los desfases de timing en la aduana y la clasificación distinta de cada lado.",
+        "El contraste contra la brecha es una asociación en panel con efectos fijos por "
+        "socio, NO una identificación causal. Los años de brecha alta en Argentina son "
+        "también años de crisis, controles y recesión, y cualquiera de esas cosas puede "
+        "mover la discrepancia por su cuenta.",
+        "El p-valor sale de un wild cluster bootstrap sobre quince años. Quince clusters "
+        "son pocos: un p entre 0,03 y 0,06 es sugerente, no concluyente.",
+        "El factor CIF/FOB se estima por país cuando se puede e imputa cuando no. La "
+        "cobertura de FOB reportado dice qué fracción del valor NO depende de esa "
+        "imputación; cuanto más baja, más descansa el número en un supuesto.",
+        "Comtrade publica con alrededor de un año de rezago y los últimos dos años tienen "
+        "menos países reportando que un año cerrado. No los leas como definitivos.",
+    ]
+
+    contexto = (
+        "Discrepancia del comercio exterior argentino medida contra los registros de las "
+        "contrapartes (UN Comtrade), en dos canales: el exportador —subfacturar "
+        "exportaciones— y el importador —sobrefacturar importaciones—. En los dos, un "
+        "valor positivo indica salida de divisas. Se acompaña del contraste que mide si "
+        "esa discrepancia crece con la brecha cambiaria, que es el precio del arbitraje.")
+
+    return Dossier(
+        titulo="Comercio espejo y brecha cambiaria", contexto=contexto,
+        hechos=tuple(hechos), caveats=tuple(caveats),
+        pregunta=("Escribí la lectura del comercio espejo: cuánta discrepancia hay, en qué "
+                  "canal, y si responde o no a la brecha cambiaria. Si los dos canales se "
+                  "comportan distinto, decilo."))
+
+
 # ---------------------------------------------------------------------------
 # Caché en disco: es lo que hace reproducible la lectura
 # ---------------------------------------------------------------------------

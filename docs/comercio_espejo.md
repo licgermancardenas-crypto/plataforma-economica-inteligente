@@ -244,6 +244,18 @@ python3 scripts/ingest_comtrade.py 1992 2025   # ~2 min, 68 llamadas
 python3 scripts/snapshot.py export-espejo
 ```
 
+En el dashboard tiene página propia (**🌐 Comercio espejo**): la serie anual por canal con
+los períodos de cepo sombreados, el factor CIF/FOB por socio contra el 10% de la literatura,
+el diagrama de dispersión contra la brecha con la pendiente estimada, y el detalle por socio
+declarando si cada FOB es reportado o imputado.
+
+**Los años provisorios se marcan y no encabezan.** Un año cuyos socios apareados caen por
+debajo del 85% de la mediana del canal se marca `provisorio`; el titular de la página se
+ancla al último año **completo**. En 2025 se aparean 51 socios contra ~70 de un año cerrado
+y el agregado cambia de signo: falta comercio declarado, no hay menos comercio. En el
+gráfico esos años van rayados además de aclarados, porque la textura sobrevive al blanco y
+negro y al daltonismo y la opacidad no.
+
 ```python
 from platec import comercio_espejo as ce
 ce.factores_cif_fob()          # factor por país declarante
