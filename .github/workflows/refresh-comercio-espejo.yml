@@ -1,0 +1,91 @@
+# Refresca el panel de comercio espejo (UN Comtrade) que consume el dashboard.
+#
+# POR QUÉ MENSUAL Y NO DIARIO. Comtrade publica con alrededor de un año de rezago y
+# los países reportan de a poco: lo que cambia entre una corrida y la siguiente es
+# que un socio que faltaba completó su año. Correrlo todos los días serían 68
+# llamadas diarias a una API ajena para que no cambie nada, y un binario de 217 KB
+# rebotando en el historial de git sin que cambie un dato.
+#
+# POR QUÉ SOLO LOS ÚLTIMOS TRES AÑOS. El histórico viejo no se mueve; los reportes
+# que llegan tarde son de los años recientes. Tres años son seis llamadas y cubren
+# tanto a los socios que completan un año abierto como la aparición del año nuevo.
+# Para rehacer todo el histórico está el modo manual (ver `desde` más abajo).
+#
+# CONVIVENCIA CON EL WORKFLOW DIARIO. `refresh-data.yml` commitea
+# data/snapshot.csv.gz a main todos los días a las 12:00 UTC. Este escribe otro
+# archivo (snapshot_espejo.csv.gz) pero sobre la misma rama, así que puede chocar
+# si el diario pushea en el medio. Por eso corre a otra hora y rebasa antes de
+# pushear: los dos tocan archivos distintos, así que el rebase no conflictúa.
+name: Refrescar comercio espejo
+
+on:
+  schedule:
+    - cron: "0 16 8 * *"     # día 8 de cada mes, 13:00 ART (lejos del job diario)
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Primer año a reingerir (vacío = últimos 3 años)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  refrescar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historial completo: el paso final rebasa contra origin/main y un clon
+          # shallow no siempre tiene la base sobre la cual rebasar.
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install requests
+
+      - name: Reconstruir la base desde los snapshots
+        # `load` levanta observations Y trade_mirror: la ingesta es incremental
+        # sobre lo que ya hay, así que si una llamada falla no se pierde histórico.
+        run: python3 scripts/snapshot.py load
+
+      - name: Reingerir desde Comtrade
+        run: |
+          set -euo pipefail
+          HASTA=$(date -u +%Y)
+          DESDE="${{ inputs.desde }}"
+          if [ -z "$DESDE" ]; then DESDE=$((HASTA - 2)); fi
+          echo "reingiriendo $DESDE..$HASTA"
+          python3 scripts/ingest_comtrade.py "$DESDE" "$HASTA"
+
+      - name: Congelar el panel (aborta si el snapshot encogería)
+        run: python3 scripts/snapshot.py export-espejo
+
+      - name: Commitear si hay reportes nuevos
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- data/snapshot_espejo.csv.gz; then
+            echo "sin reportes nuevos"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/snapshot_espejo.csv.gz
+          RESUMEN=$(python3 - <<'PY'
+          import gzip, csv
+          with gzip.open("data/snapshot_espejo.csv.gz", "rt", encoding="utf-8") as fh:
+              filas = list(csv.reader(fh))[1:]
+          anios = [int(f[0]) for f in filas]
+          print(f"{len(filas)} filas, {min(anios)}..{max(anios)}")
+          PY
+          )
+          git commit -m "Datos: comercio espejo ($RESUMEN)"
+          # El job diario pushea a la misma rama. Tocamos archivos distintos, así que
+          # rebasar resuelve la carrera sin conflicto; se reintenta por si el diario
+          # entra justo entre el fetch y el push.
+          for intento in 1 2 3; do
+            git pull --rebase --autostash origin main && git push && exit 0
+            echo "push rechazado (intento $intento), reintentando"
+            sleep 10
+          done
+          echo "no se pudo pushear tras 3 intentos"; exit 1

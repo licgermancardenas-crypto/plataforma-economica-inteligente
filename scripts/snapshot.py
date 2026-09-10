@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import io
 import json
 import sqlite3
 import sys
@@ -46,6 +47,22 @@ COLUMNAS = ("series_id", "obs_date", "value", "quality_flag")
 SNAPSHOT_ESPEJO = ROOT / "data" / "snapshot_espejo.csv.gz"
 COLUMNAS_ESPEJO = ("year", "reporter_code", "partner_code", "flow_code",
                    "primary_value", "fob_value", "cif_value")
+
+
+def _abrir_gz(destino: Path):
+    """
+    gzip DETERMINISTA: mismo contenido, mismos bytes.
+
+    Por defecto gzip escribe en la cabecera la hora de creación y el nombre del
+    archivo original, así que dos exports de la MISMA base dan binarios distintos.
+    Eso rompe el `git diff --quiet` con el que los workflows deciden si hay algo
+    nuevo: el mensual commitearía un binario de 217 KB todos los meses aunque no
+    haya cambiado un solo reporte. Con `mtime=0` y sin nombre incrustado, el
+    archivo cambia si y solo si cambiaron los datos.
+    """
+    crudo = destino.open("wb")
+    gz = gzip.GzipFile(filename="", mode="wb", compresslevel=9, fileobj=crudo, mtime=0)
+    return io.TextIOWrapper(gz, encoding="utf-8", newline=""), crudo
 
 
 def _corto(p: Path) -> str:
@@ -94,12 +111,15 @@ def export(force: bool = False) -> Path:
             "SELECT series_id, obs_date, value, quality_flag FROM observations "
             "ORDER BY series_id, obs_date")
         n = 0
-        with gzip.open(SNAPSHOT, "wt", newline="", encoding="utf-8", compresslevel=9) as fh:
+        fh, crudo = _abrir_gz(SNAPSHOT)
+        try:
             w = csv.writer(fh)
             w.writerow(COLUMNAS)
             for fila in filas:
                 w.writerow(fila)
                 n += 1
+        finally:
+            fh.close(); crudo.close()
     finally:
         con.close()
 
@@ -181,8 +201,28 @@ def load(series: list[str] | None = None) -> int:
 # ---------------------------------------------------------------------------
 # Comercio espejo (tabla trade_mirror)
 # ---------------------------------------------------------------------------
-def export_espejo() -> Path | None:
-    """Congela `trade_mirror`. Devuelve None si la tabla está vacía o no existe."""
+def _filas_congeladas() -> int:
+    """Filas del snapshot espejo ya versionado (0 si no hay ninguno)."""
+    if not SNAPSHOT_ESPEJO.exists():
+        return 0
+    try:
+        with gzip.open(SNAPSHOT_ESPEJO, "rt", newline="", encoding="utf-8") as fh:
+            return max(sum(1 for _ in fh) - 1, 0)      # -1 por la cabecera
+    except OSError:
+        return 0
+
+
+def export_espejo(force: bool = False) -> Path | None:
+    """
+    Congela `trade_mirror`. Devuelve None si la tabla está vacía o no existe.
+
+    Guardrail: se niega a reemplazar el snapshot por uno con MENOS filas. La
+    ingesta nunca borra y la base se reconstruye desde el snapshot antes de
+    actualizar, así que un snapshot que encoge significa que algo salió mal —una
+    base a medio construir, una tabla recreada vacía— y no que haya menos comercio.
+    Es el mismo criterio que hace que `export` aborte con una serie vacía, y pesa
+    más ahora que un workflow mensual lo escribe sin nadie mirando.
+    """
     if not DB_PATH.exists():
         raise SystemExit(f"no existe {DB_PATH}: correr init_db.py primero")
     con = sqlite3.connect(DB_PATH)
@@ -200,12 +240,21 @@ def export_espejo() -> Path | None:
         print("trade_mirror vacía: no se congela nada")
         return None
 
+    previas = _filas_congeladas()
+    if previas and len(filas) < previas and not force:
+        raise SystemExit(
+            f"el snapshot espejo encogería de {previas} a {len(filas)} filas. "
+            "La ingesta no borra: esto es una base incompleta, no menos comercio. "
+            "Revisá la base o forzá con --force si es intencional.")
+
     SNAPSHOT_ESPEJO.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(SNAPSHOT_ESPEJO, "wt", newline="", encoding="utf-8",
-                   compresslevel=9) as fh:
+    fh, crudo = _abrir_gz(SNAPSHOT_ESPEJO)
+    try:
         w = csv.writer(fh)
         w.writerow(COLUMNAS_ESPEJO)
         w.writerows(filas)
+    finally:
+        fh.close(); crudo.close()
     anios = {f[0] for f in filas}
     print(f"espejo: {len(filas)} filas, {min(anios)}..{max(anios)} -> "
           f"{_corto(SNAPSHOT_ESPEJO)} ({SNAPSHOT_ESPEJO.stat().st_size / 1024:.0f} KB)")
@@ -253,7 +302,7 @@ def main(argv: list[str]) -> None:
     if cmd == "export":
         export(force="--force" in argv)
     elif cmd == "export-espejo":
-        export_espejo()
+        export_espejo(force="--force" in argv)
     elif cmd == "load":
         print(f"cargadas {load()} obs en {_corto(DB_PATH)}")
     elif cmd == "info":

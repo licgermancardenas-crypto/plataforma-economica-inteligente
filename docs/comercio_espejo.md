@@ -227,6 +227,25 @@ Límites medidos contra la API real (2026-09):
 commitea el workflow todos los días, y meter acá un binario de comercio exterior lo haría
 cambiar a diario sin que cambiara un dato. `snapshot.py load` carga los dos.
 
+Lo mantiene al día [`refresh-comercio-espejo.yml`](../.github/workflows/refresh-comercio-espejo.yml),
+**mensual** (día 8, 16:00 UTC). Reingiere solo los **últimos tres años**: el histórico viejo
+no se mueve y lo que cambia entre corridas es que un socio que faltaba completó su año. Son
+seis llamadas. El modo manual (`workflow_dispatch`) acepta un año inicial para rehacer todo.
+
+Dos cosas que hacen falta para que eso funcione sin nadie mirando:
+
+- **El gzip es determinista** (`mtime=0`, sin nombre incrustado). Por defecto gzip escribe
+  la hora de creación en la cabecera, así que dos exports de la misma base dan binarios
+  distintos y el `git diff --quiet` con el que el job decide si hay algo nuevo daría siempre
+  que sí: 217 KB commiteados todos los meses aunque no cambie un reporte.
+- **`export-espejo` se niega a encoger.** La ingesta no borra y la base se reconstruye desde
+  el snapshot antes de actualizar, así que un snapshot con menos filas que el versionado
+  significa base incompleta, no menos comercio. Es el mismo criterio por el que `export`
+  aborta con una serie vacía.
+
+El job diario y el mensual escriben archivos distintos pero sobre la misma rama, así que el
+mensual rebasa antes de pushear y reintenta hasta tres veces.
+
 ## 8. Por qué una tabla y no series
 
 `observations` es `(series_id, obs_date)`: una serie de tiempo univariada. El comercio

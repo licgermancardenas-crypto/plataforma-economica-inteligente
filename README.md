@@ -62,7 +62,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (176 casos)
+python3 -m pytest                        # suite de tests (184 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -195,7 +195,11 @@ decenas de segundos y, si una API rate-limiteaba o bloqueaba la IP del server, e
 dashboard directamente no renderizaba. Ahora las APIs son una actualización opcional
 (botón «Actualizar» en el sidebar y el workflow diario
 [`refresh-data.yml`](.github/workflows/refresh-data.yml)), no un requisito para ver el
-tablero. `snapshot.py export` se niega a congelar una base con series vacías, así que
+tablero. El panel de comercio espejo tiene su propio workflow
+[`refresh-comercio-espejo.yml`](.github/workflows/refresh-comercio-espejo.yml), **mensual**
+porque Comtrade publica una vez al año: correrlo a diario serían 68 llamadas para que no
+cambie nada. Los snapshots se escriben con **gzip determinista**, así que el binario cambia
+si y solo si cambiaron los datos. `snapshot.py export` se niega a congelar una base con series vacías, así que
 un snapshot parcial nunca llega al deploy.
 
 ### Dónde corre (y dónde no)
