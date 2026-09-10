@@ -42,22 +42,7 @@ HS de 6 dígitos, que con el preview gratuito de Comtrade no entran (techo de 50
 
 ---
 
-## 3. El VAR diario arranca en 2013 por el CCL
-
-**Estado:** hay datos sin usar.
-
-El sistema diario `[riesgo país, TC mayorista, brecha]` empieza en 2013 porque lo limita la
-serie de CCL. Pero **riesgo país tiene datos desde 1999**: un sistema `[riesgo, TC]` sin
-brecha podría cubrir 1999-2013, que incluye la salida de la convertibilidad, el default y la
-reestructuración.
-
-**Por qué importa:** con el resto de la base arrancando en 2016, esa serie es la única que
-contiene episodios de crisis reales. Sin ellos, cualquier estimación de quiebres estructurales
-se hace sobre una muestra que no tiene ninguno.
-
----
-
-## 4. El pass-through usa tipo de cambio nominal
+## 3. El pass-through usa tipo de cambio nominal
 
 **Estado:** aproximación declarada.
 
@@ -69,7 +54,7 @@ las pendientes más baratas.
 
 ---
 
-## 5. La tabla de Granger mensual usa un criterio que el proyecto no cree
+## 4. La tabla de Granger mensual usa un criterio que el proyecto no cree
 
 **Estado:** deuda técnica con consecuencia metodológica.
 
@@ -82,7 +67,7 @@ Granger en el dossier del LLM, de donde hoy está excluido a propósito.
 
 ---
 
-## 6. El IPC resulta I(2)
+## 5. El IPC resulta I(2)
 
 **Estado:** decidido para el corto plazo, abierto para el largo.
 
@@ -97,7 +82,7 @@ o un VECM I(2).
 
 ---
 
-## 7. El caché del narrador se pierde en cada reinicio
+## 6. El caché del narrador se pierde en cada reinicio
 
 **Estado:** costo, no rigor.
 
@@ -109,7 +94,7 @@ medidas.
 
 ---
 
-## 8. El job diario commitea aunque no haya datos nuevos
+## 7. El job diario commitea aunque no haya datos nuevos
 
 **Estado:** ruido en el historial.
 
@@ -123,7 +108,7 @@ confiable.
 
 ---
 
-## 9. Falta la deuda pública
+## 8. Falta la deuda pública
 
 **Estado:** bloqueado por la fuente.
 

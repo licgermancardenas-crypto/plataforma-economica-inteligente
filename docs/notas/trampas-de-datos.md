@@ -46,6 +46,33 @@ por valor. Se filtra **al leer**, no al ingerir: la base guarda lo que dijo la f
 
 ---
 
+## El EMBI+ cambia de valor porque cambia de definición
+
+**Módulo:** `platec/stats.py` (`RECOMPOSICIONES_EMBI`) · **Test:** `tests/test_stats.py`
+
+Al liquidarse un canje de deuda, los bonos en default salen del índice y entran los nuevos.
+El 13/06/2005 el riesgo país pasa de **6.606 a 794** puntos básicos en una rueda; el
+10/09/2020, de **2.120 a 1.101**. En log-diferencias son retornos de −212% y −65% que no son
+movimientos de precio: el índice mide otra cosa a partir de ese día.
+
+**Por qué un filtro de outliers no sirve.** El 12/08/2019, el lunes posterior a las PASO, el
+riesgo país salta **+52%**. Es tan extremo estadísticamente como una recomposición y es el
+dato más informativo de la serie. Cualquier regla por z-score borraría los dos. Las fechas se
+listan a mano con el evento que las justifica.
+
+**Qué se rompe:** la variación, no el nivel. Y devuelve NaN, no cero — un cero afirmaría que
+no hubo movimiento.
+
+**Lo que costó:** el día del canje 2020 aportaba el 13% de la suma de cuadrados de los
+retornos en la muestra 2013-2026, y su presencia hacía leer como frágil (4/6) una relación que
+es robusta (6/6). Tapaba un resultado real.
+
+**La clase de error:** un índice que se redefine sin cambiar de nombre. Aplica a cualquier
+serie con recomposiciones, rebases o empalmes — y la defensa no es estadística sino
+documental.
+
+---
+
 ## El menos tipográfico U+2212 no es el guion ASCII
 
 **Módulo:** [`capa_ia.md`](../capa_ia.md) · **Test:** `tests/test_narrador.py`

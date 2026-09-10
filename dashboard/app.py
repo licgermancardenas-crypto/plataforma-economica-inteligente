@@ -716,11 +716,17 @@ def _var_diario():
     from platec import econometria as ec
 
     df = data.get_frame(DIARIO, freq="D").dropna()
+    # Los retornos del riesgo país se calculan ANULANDO los días de recomposición del
+    # EMBI+ (ver stats.RECOMPOSICIONES_EMBI). El 10/09/2020, con la liquidación del
+    # canje, el índice cae de 2.120 a 1.101 puntos: es un cambio de qué mide, no un
+    # movimiento de mercado, y en esta muestra ese único día aportaba el 13% de la
+    # suma de cuadrados de la serie. Sin anularlo, la relación TC → riesgo país en
+    # Cepo II se leía como no robusta (4/6) cuando es robusta (6/6).
     v_all = pd.DataFrame({
-        "riesgo": np.log(df["riesgo_pais"]),
-        "tc":     np.log(df["tc_mayorista"]),
-        "brecha": np.log(df["usd_ccl"] / df["tc_mayorista"]),
-    }).diff().mul(100).dropna()
+        "riesgo": stats.log_dif(df["riesgo_pais"], stats.RECOMPOSICIONES_EMBI),
+        "tc":     stats.log_dif(df["tc_mayorista"]),
+        "brecha": stats.log_dif(df["usd_ccl"] / df["tc_mayorista"]),
+    }).dropna()
 
     brecha_pct = (df["usd_ccl"] / df["tc_mayorista"] - 1) * 100
     out = {}
@@ -733,6 +739,45 @@ def _var_diario():
             "brecha_media": float(b.mean()), "brecha_sd": float(b.std()),
         }
     return out, len(v_all), v_all.index[0], v_all.index[-1]
+
+
+# Sistema BIVARIADO [riesgo país, TC], sin brecha. Sacando la brecha se pierde una
+# variable y se ganan once años: el CCL arranca en 2013 y el TC mayorista en 2002-03.
+# No arranca en 1999 —aunque el riesgo país sí— porque durante la convertibilidad el
+# peso estaba fijo por ley: no hay tipo de cambio que modelar, y el BCRA empieza a
+# publicar la serie cuando empieza la flotación.
+LARGO = ["riesgo_pais", "tc_mayorista"]
+REGIMENES_LARGO = {
+    "Default (2002-05)":       ("2002-03-04", "2005-06-10"),
+    "Normalización (2005-11)": ("2005-06-14", "2011-10-30"),
+    "Cepo I (2011-15)":        ("2011-10-31", "2015-12-16"),
+    "Sin cepo (2016-19)":      ("2015-12-17", "2019-09-01"),
+    "Cepo II (2019-23)":       ("2019-09-02", "2023-12-12"),
+    "Post-2023":               ("2023-12-13", None),
+}
+PARES_LARGO = [("riesgo", "tc"), ("tc", "riesgo")]
+
+
+@st.cache_data(ttl=3600, show_spinner="Estimando el VAR diario largo (2002-hoy)...")
+def _var_largo():
+    """Granger por régimen sobre el sistema bivariado, con once años más de muestra."""
+    from platec import econometria as ec
+
+    df = data.get_frame(LARGO, freq="D").dropna()
+    v = pd.DataFrame({
+        "riesgo": stats.log_dif(df["riesgo_pais"], stats.RECOMPOSICIONES_EMBI),
+        "tc":     stats.log_dif(df["tc_mayorista"]),
+    }).dropna()
+    out = {}
+    for nombre, (desde, hasta) in REGIMENES_LARGO.items():
+        s = v.loc[desde:hasta]
+        if len(s) < 120:
+            continue
+        out[nombre] = {"granger": ec.granger_robusto(s, PARES_LARGO), "n": len(s),
+                       "desde": s.index[0], "hasta": s.index[-1],
+                       "sd_riesgo": float(s["riesgo"].std()),
+                       "sd_tc": float(s["tc"].std())}
+    return out, len(v), v.index[0], v.index[-1]
 
 
 @st.cache_data(ttl=3600, show_spinner="Estimando el VAR de la cadena y sus bandas (bootstrap)...")
@@ -1021,6 +1066,75 @@ def pagina_econometria():
                    "un salto de viernes a lunes como un período. Es práctica estándar en "
                    "datos financieros diarios, pero introduce heterocedasticidad — otro "
                    "motivo para leer los p-valores como orden de magnitud.")
+
+    st.divider()
+    seccion("El mismo sistema, once años más atrás")
+    largo, n_largo, l0, l1 = _var_largo()
+    st.caption(
+        f"Sacando la brecha del sistema se pierde una variable y se ganan **once años**: "
+        f"el CCL arranca en 2013 y el TC mayorista en marzo de 2002. El sistema bivariado "
+        f"`[riesgo país, TC mayorista]` cubre **{n_largo:,} días** ({l0.date()} a "
+        f"{l1.date()}) e incluye el default, el canje de 2005 y la crisis de 2008 — "
+        f"episodios de crisis reales que la muestra desde 2013 no contiene. "
+        f"**No arranca en 1999** aunque el riesgo país sí: durante la convertibilidad el "
+        f"peso estaba fijo por ley y no hay tipo de cambio que modelar.")
+
+    with st.container(border=True):
+        filas = []
+        for nombre, r in largo.items():
+            g = r["granger"]
+            fila = {"régimen": nombre, "días": r["n"],
+                    "sd riesgo": round(r["sd_riesgo"], 2), "sd TC": round(r["sd_tc"], 2)}
+            for rel in g.index:
+                fila[rel] = ("✅ " if g.loc[rel, "robusta"] else "— ") + g.loc[rel, "signif. en"]
+            filas.append(fila)
+        st.dataframe(pd.DataFrame(filas).set_index("régimen"), **ANCHO)
+        st.caption(
+            "Mismo criterio que arriba: ✅ sólo si la relación aguanta los seis rezagos "
+            "de la grilla. La columna `sd TC` explica sola el régimen de normalización: "
+            "con el peso casi fijo entre 2005 y 2011 apenas hay variación cambiaria que "
+            "pueda anticipar nada.")
+
+    with st.container(border=True):
+        st.markdown("**Qué agrega la muestra larga**")
+        st.markdown(
+            "**La hipótesis del riesgo país no se cae por falta de datos.** `Riesgo país "
+            "→ TC` no es robusta en **ninguno** de los seis regímenes, y ahora eso "
+            "incluye el default, la salida del default y 2008. Si el canal existiera "
+            "en las crisis, once años más de muestra con tres crisis adentro deberían "
+            "haberlo mostrado.\n\n"
+            "**La dirección contraria aparece en un solo régimen: Cepo II.** `TC → riesgo "
+            "país` aguanta los seis rezagos ahí y en ningún otro lado. La lectura "
+            "económica es que bajo cepo duro el tipo de cambio oficial es una **variable "
+            "de política**, y moverlo informa sobre la voluntad o la capacidad del "
+            "gobierno de sostener el régimen — que es exactamente lo que el riesgo "
+            "soberano pone precio. Sin cepo, el TC es un precio de mercado que absorbe "
+            "esa información en simultáneo, y por eso no lidera.")
+        st.info(
+            "**Los dos sistemas coinciden.** El bivariado largo (2002-hoy) y el "
+            "trivariado corto (2013-hoy) dan lo mismo: `TC → riesgo país` robusta sólo "
+            "en Cepo II. Son muestras y especificaciones distintas, así que no es una "
+            "verificación redundante.")
+
+    with st.container(border=True):
+        st.markdown("**Un artefacto que había que sacar antes de mirar nada**")
+        st.markdown(
+            "El EMBI+ tiene días en que cambia porque cambió **qué mide**: al liquidarse "
+            "un canje los bonos en default salen del índice y entran los nuevos. El "
+            "13/06/2005 el riesgo país pasa de 6.606 a 794 puntos en una rueda, y el "
+            "10/09/2020 de 2.120 a 1.101. En log-diferencias son retornos de −212% y "
+            "−65% que no son movimientos de precio.\n\n"
+            "**No alcanza un filtro de outliers.** El 12/08/2019 —el lunes post-PASO— el "
+            "riesgo país salta +52%: estadísticamente es igual de extremo y es el dato "
+            "más informativo de la serie. Una regla por z-score borraría los dos. Las "
+            "fechas se listan a mano con el evento que las justifica, igual que el tramo "
+            "INTERVENIDO del IPC.")
+        st.warning(
+            "**Esto corrigió un resultado que ya estaba publicado.** En la muestra desde "
+            "2013 el día del canje 2020 aportaba el **13% de la suma de cuadrados** de "
+            "los retornos del riesgo país. Sin anularlo, `TC → riesgo país` en Cepo II se "
+            "leía como frágil (4/6); anulándolo es robusta (6/6). El artefacto tapaba una "
+            "relación real, no inventaba una falsa.")
 
     st.divider()
     seccion("¿La muestra es un régimen o varios?")

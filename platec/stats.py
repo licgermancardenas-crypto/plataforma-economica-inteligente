@@ -85,3 +85,52 @@ def resumen(s: pd.Series) -> dict:
         "var_interanual_%": round(float(var_interanual(s).iloc[-1]), 2)
         if len(s) > _PERIODOS_ANUALES.get(s.attrs.get("frequency", "M"), 12) else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Retornos con cortes: cuando el índice se redefine, la variación no es un dato
+# ---------------------------------------------------------------------------
+# El EMBI+ Argentina tiene días en los que su valor cambia porque cambió QUÉ MIDE,
+# no porque se haya movido el mercado. Al liquidarse un canje, los bonos en default
+# salen del índice y entran los nuevos: el 13 de junio de 2005 el riesgo país pasa
+# de 6.606 a 794 puntos básicos en una rueda, y el 10 de septiembre de 2020 de 2.120
+# a 1.101. En log-diferencias eso es un retorno de -212% y otro de -65%, que no son
+# movimientos de precio sino una recomposición del índice.
+#
+# POR QUÉ NO ALCANZA UN FILTRO DE OUTLIERS. El 12 de agosto de 2019 —el lunes
+# después de las PASO— el riesgo país salta +52% en un día. Estadísticamente es tan
+# extremo como una recomposición, y es un movimiento de mercado absolutamente real:
+# el dato más informativo de toda la serie. Una regla automática por z-score los
+# borraría a los dos. Por eso las fechas se listan a mano, con el evento que las
+# justifica, igual que el tramo INTERVENIDO del IPC: es conocimiento del dominio,
+# no un test.
+#
+# QUÉ SE ROMPE Y QUÉ NO. El NIVEL de esos días es correcto y se conserva; lo que no
+# existe es la VARIACIÓN entre el día anterior y ese día, porque une dos objetos
+# distintos. Se devuelve NaN, no cero: un cero diría "no se movió", que es falso.
+RECOMPOSICIONES_EMBI = {
+    "2005-06-13": "liquidación del canje I: los bonos en default salen del índice",
+    "2005-06-30": "recomposición posterior al canje I",
+    "2020-09-10": "liquidación del canje 2020",
+}
+# La reapertura del canje de 2010 NO produjo salto en esta serie (verificado sobre
+# los datos: ningún movimiento mayor al 15% en junio de 2010). No está en la lista
+# porque no hizo falta, no por olvido.
+
+
+def log_dif(s: pd.Series, cortes=(), escala: float = 100.0) -> pd.Series:
+    """
+    Diferencia de logaritmos (×100), con los retornos de `cortes` puestos en NaN.
+
+    `cortes` son fechas en las que la serie cambió de definición: el retorno que
+    cruza ese día une dos objetos distintos y no es un dato. Devuelve NaN y no cero
+    porque un cero afirmaría que no hubo movimiento.
+
+    Con `cortes` vacío es una log-diferencia común.
+    """
+    d = np.log(s.astype(float)).diff() * escala
+    for fecha in cortes:
+        f = pd.Timestamp(fecha)
+        if f in d.index:
+            d.loc[f] = np.nan
+    return d

@@ -64,7 +64,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (194 casos)
+python3 -m pytest                        # suite de tests (201 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -152,6 +152,32 @@ importaciones: **sobrefacturar exige acceso al dólar oficial, que es lo que el 
 subfacturar exportaciones no exige permiso de nadie.** El control de cambios no elimina el
 arbitraje, lo empuja hacia el lado que no controla. Detalle y límites en
 [`docs/comercio_espejo.md`](docs/comercio_espejo.md).
+
+### La hipótesis del riesgo país no se caía por falta de datos
+El VAR diario `[riesgo país, TC, brecha]` arrancaba en 2013 porque lo limita el CCL. Sacando
+la brecha se pierde una variable y se ganan **once años**: el bivariado `[riesgo país, TC]`
+cubre **5.920 días desde marzo de 2002**, con el default, el canje de 2005 y la crisis de
+2008 adentro. No arranca en 1999 aunque el riesgo país sí: durante la convertibilidad el peso
+estaba fijo por ley y no hay tipo de cambio que modelar.
+
+`Riesgo país → TC` **no es robusta en ninguno de los seis regímenes**. Si el canal existiera
+en las crisis, once años más de muestra con tres crisis adentro deberían haberlo mostrado.
+Lo que sí aguanta los seis rezagos, y en un solo régimen, es `TC → riesgo país` **en Cepo II**:
+bajo cepo duro el tipo de cambio oficial es una *variable de política*, y moverlo informa
+sobre la capacidad del gobierno de sostener el régimen — que es lo que el riesgo soberano pone
+precio. Sin cepo, el TC absorbe esa información en simultáneo y no lidera.
+
+**Y antes de mirar nada hubo que sacar un artefacto.** El EMBI+ cambia de valor cuando cambia
+*qué mide*: al liquidarse un canje los bonos en default salen del índice. El 13/06/2005 el
+riesgo país pasa de 6.606 a 794 puntos en una rueda y el 10/09/2020 de 2.120 a 1.101 — en log
+son retornos de −212% y −65% que no son movimientos de precio. Un filtro de outliers no sirve:
+el +52% del lunes post-PASO de 2019 es igual de extremo y es el dato más informativo de la
+serie. Las fechas se listan a mano con su evento (`stats.RECOMPOSICIONES_EMBI`), como el tramo
+INTERVENIDO del IPC.
+
+> Eso **corrigió un resultado ya publicado**: el día del canje 2020 aportaba el 13% de la suma
+> de cuadrados de los retornos en la muestra 2013-2026, y sin anularlo `TC → riesgo país` en
+> Cepo II se leía frágil (4/6) cuando es robusta (6/6). El artefacto tapaba una relación real.
 
 ### «No se rechaza» no es lo mismo que «es estable»
 El VAR mensual se estima **pooleado** sobre una muestra que cruza la crisis de 2018-19 y la

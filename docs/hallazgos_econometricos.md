@@ -240,11 +240,73 @@ mover el resultado (RMSE 1.68 vs. naive 2.42, +31%).
 - **Tabla de Granger mensual (§5):** sigue mostrándose con `p mínimo sobre 6 rezagos`.
   Reauditada con el test conjunto y las conclusiones no cambian, pero conviene migrar la
   tabla a `granger_sistema()` para que el criterio sea uno solo en todo el proyecto.
-- **Riesgo país anterior a 2013:** el VAR diario arranca en 2013 porque lo limita el CCL.
-  La serie de riesgo país tiene datos desde 1999 — un sistema `[riesgo, TC]` sin brecha
-  podría usar 2002-2013 y cubrir la salida de la convertibilidad.
+- **Riesgo país anterior a 2013:** hecho, en §5d. El sistema bivariado cubre 2002-2026
+  (5.920 días). No arranca en 1999: durante la convertibilidad el peso estaba fijo por ley.
 - **Nowcasting (Etapa 7):** con estas relaciones + variables de alta frecuencia (TC diario) se
   puede estimar el IPC del mes en curso antes de la publicación oficial.
+
+## 5d. El mismo sistema, once años más atrás
+
+Sacando la brecha del sistema diario se pierde una variable y se ganan **once años**: el CCL
+arranca en 2013 y el TC mayorista en marzo de 2002. El bivariado `[riesgo país, TC mayorista]`
+cubre **5.920 días** (2002-03 a 2026-09) e incluye el default, el canje de 2005 y la crisis de
+2008 — episodios de crisis reales que la muestra desde 2013 no contiene.
+
+**No arranca en 1999** aunque el riesgo país sí. Durante la convertibilidad el peso estaba
+fijo 1 a 1 por ley: no hay tipo de cambio que modelar, y el BCRA empieza a publicar la serie
+cuando empieza la flotación. Un VAR con una variable constante es degenerado, no informativo.
+
+| Régimen | Días | sd riesgo | sd TC | riesgo → TC | TC → riesgo |
+|---|---|---|---|---|---|
+| Default (2002-05) | 813 | 1,97 | 1,25 | — 3/6 | — 4/6 |
+| Normalización (2005-11) | 1.555 | 2,97 | **0,19** | — 2/6 | — 0/6 |
+| Cepo I (2011-15) | 972 | 2,56 | 0,36 | — 0/6 | — 0/6 |
+| Sin cepo (2016-19) | 890 | 3,11 | 1,83 | — 3/6 | — 0/6 |
+| Cepo II (2019-23) | 1.035 | 2,36 | 0,65 | — 0/6 | **✅ 6/6** |
+| Post-2023 | 655 | 3,78 | 3,21 | — 2/6 | — 2/6 |
+
+**La hipótesis del riesgo país no se caía por falta de datos.** `Riesgo país → TC` no es
+robusta en **ninguno** de los seis regímenes, y ahora eso incluye el default, la salida del
+default y 2008. Si el canal existiera en las crisis, once años más de muestra con tres crisis
+adentro deberían haberlo mostrado. No lo hicieron.
+
+**La dirección contraria aparece en un solo régimen: Cepo II.** `TC → riesgo país` aguanta los
+seis rezagos ahí y en ningún otro lado. Lectura económica: bajo cepo duro el tipo de cambio
+oficial es una **variable de política**, y moverlo informa sobre la voluntad o la capacidad
+del gobierno de sostener el régimen — que es exactamente lo que el riesgo soberano pone
+precio. Sin cepo, el TC es un precio de mercado que absorbe esa información en simultáneo y
+por eso no lidera.
+
+**Los dos sistemas coinciden.** El bivariado largo (2002-hoy) y el trivariado corto
+(2013-hoy) dan lo mismo: `TC → riesgo país` robusta sólo en Cepo II. Son muestras y
+especificaciones distintas, así que no es una verificación redundante.
+
+> **El régimen de normalización se explica solo con su `sd TC` = 0,19.** Entre 2005 y 2011 el
+> BCRA sostuvo el peso casi fijo; apenas hay variación cambiaria que pueda anticipar nada. No
+> es que el canal no exista ahí: es que no hay qué medir.
+
+### El artefacto que había que sacar antes de mirar nada
+
+El EMBI+ tiene días en los que cambia porque cambió **qué mide**. Al liquidarse un canje los
+bonos en default salen del índice y entran los nuevos: el 13/06/2005 el riesgo país pasa de
+6.606 a 794 puntos básicos en una rueda, y el 10/09/2020 de 2.120 a 1.101. En log-diferencias
+son retornos de **−212% y −65%** que no son movimientos de precio.
+
+**No alcanza un filtro de outliers.** El 12/08/2019 —el lunes posterior a las PASO— el riesgo
+país salta **+52%** en un día: estadísticamente es tan extremo como una recomposición y es el
+dato más informativo de toda la serie. Una regla automática por z-score borraría los dos. Las
+fechas se listan a mano con el evento que las justifica (`stats.RECOMPOSICIONES_EMBI`), igual
+que el tramo INTERVENIDO del IPC: es conocimiento del dominio, no un test.
+
+Se anula la **variación**, no el nivel, y se devuelve NaN en vez de cero: un cero diría "no se
+movió", que es falso.
+
+> **Esto corrigió un resultado que ya estaba publicado.** En la muestra desde 2013, el día del
+> canje 2020 aportaba el **13% de la suma de cuadrados** de los retornos del riesgo país
+> —una observación de −20,8 desvíos—. Sin anularlo, `TC → riesgo país` en Cepo II se leía como
+> frágil (4/6); anulándolo es robusta (6/6). El artefacto **tapaba una relación real**, no
+> inventaba una falsa. La verificación de la reapertura del canje de 2010 dio negativa: no
+> produjo salto, y por eso no está en la lista.
 
 ---
 
