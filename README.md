@@ -52,7 +52,8 @@ platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gob
 dashboard/  app Streamlit (app.py) + bootstrap de datos
 scripts/    utilidades ejecutables (validate_sources, init_db, ingest, snapshot, analisis)
 sql/        DDL del esquema (schema.sql)
-docs/       documentación técnica (fuentes validadas, hallazgos econométricos, capa de IA)
+docs/       documentación técnica (fuentes validadas, hallazgos econométricos, capa de IA,
+            comercio espejo) + notas/ (bitácora de investigación)
 data/       snapshot.csv.gz (versionado) + plataforma.db (generada, ignorada)
 ```
 
@@ -214,6 +215,18 @@ panel de lectura automática determinístico. Detalle completo en
 ```bash
 export ANTHROPIC_API_KEY="..."   # local; en Streamlit Cloud va como secret del deploy
 ```
+
+### Bitácora de investigación
+[`docs/notas/`](docs/notas/) es la capa que `docs/` no cubre: `docs/` documenta **lo que el
+código hace**, las notas guardan **lo que se aprendió haciéndolo**. Cuatro archivos:
+[literatura](docs/notas/literatura.md) (qué se tomó de cada método y qué no),
+[decisiones descartadas](docs/notas/decisiones-descartadas.md) (con qué haría falta para darlas
+vuelta), [trampas de datos](docs/notas/trampas-de-datos.md) (los errores silenciosos de las
+fuentes) y [preguntas abiertas](docs/notas/preguntas-abiertas.md).
+
+Se leen igual en GitHub y en Obsidian: son `.md` planos con links relativos estándar, sin
+`[[wikilinks]]` ni plugins que generen contenido. Para abrirlas en Obsidian, `Open folder as
+vault` sobre la raíz del repo — no hay nada que importar. `.obsidian/` está en el `.gitignore`.
 
 ### Datos: snapshot versionado
 El histórico viaja en el repo como `data/snapshot.csv.gz` (~245 KB, 51k observaciones).

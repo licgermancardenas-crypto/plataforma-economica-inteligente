@@ -23,6 +23,10 @@ venv/
 .ipynb_checkpoints/
 
 # --- Entorno / editores / herramientas locales ---
+# Obsidian: el vault apunta a ESTE repo, así que las notas se versionan como
+# cualquier .md. Lo que no se versiona es la configuración local del programa
+# (workspace, plugins, tema): es de la máquina, no del proyecto.
+.obsidian/
 .claude/
 .agents/
 skills-lock.json

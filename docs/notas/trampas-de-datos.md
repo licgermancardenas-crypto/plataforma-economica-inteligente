@@ -1,0 +1,127 @@
+# Trampas de datos
+
+Errores silenciosos de las fuentes: los que no tiran excepción, no dejan un hueco visible y
+producen un número plausible que está mal. Cada uno de estos costó horas y ninguno se habría
+encontrado leyendo la documentación de la fuente.
+
+Todos tienen test de regresión. La nota existe para que el test tenga una explicación y para
+no volver a caer en la misma clase de error con una fuente nueva.
+
+---
+
+## El PIB trimestral del INDEC ya viene anualizado
+
+**Serie:** `pib_corriente` · **Test:** `tests/test_gobiernos.py`
+
+La serie se etiqueta «millones de pesos corrientes» con frecuencia trimestral, lo que se lee
+como «el PIB de ese trimestre». **No lo es.** Sumar los cuatro trimestres da 4,3× el PIB real
+y hunde todos los ratios a un cuarto: la recaudación daría 5% del PBI en vez de 20%.
+
+El control cruzado que lo detectó fue pasar a dólares y comparar contra el PIB conocido de
+Argentina. Hay test de regresión anclado a esa magnitud.
+
+**La clase de error:** una etiqueta de unidad que es literalmente correcta y semánticamente
+engañosa. Ante cualquier serie de flujo trimestral nueva, cruzar contra una magnitud conocida
+antes de usarla como denominador.
+
+---
+
+## Comtrade devuelve `fobvalue = 0`, no `null`
+
+**Módulo:** [`comercio_espejo.md`](../comercio_espejo.md) §3 · **Test:** `tests/test_comercio_espejo.py`
+
+Los países que no calculan la valoración FOB la reportan como **cero**, no como faltante.
+China informa su importación desde Argentina de 2020 como `cif = 6.814 millones`, `fob = 0`.
+
+Tomar ese cero como un FOB legítimo hace que el socio «declare» cero contra una exportación
+argentina real. Con ese bug la discrepancia del canal exportador daba **−27.000 millones de
+dólares en 2020**: el 40% de las exportaciones argentinas, inventado por un cero. En un solo
+año hay 83 registros así, tapando 35 mil millones de valor.
+
+**Lo que lo delató:** el número era absurdo. Si hubiera sido −2.000 millones en vez de
+−27.000, habría pasado.
+
+**La clase de error:** cero como centinela de faltante. `notna()` no alcanza; hay que filtrar
+por valor. Se filtra **al leer**, no al ingerir: la base guarda lo que dijo la fuente.
+
+---
+
+## El menos tipográfico U+2212 no es el guion ASCII
+
+**Módulo:** [`capa_ia.md`](../capa_ia.md) · **Test:** `tests/test_narrador.py`
+
+Un modelo que escribe con tipografía correcta usa `−` (U+2212), no `-`. El verificador
+numérico parseaba con un regex que solo contemplaba el ASCII, así que **«−0,80» se leía como
++0,80** y toda IRF negativa legítima salía marcada como número inventado.
+
+Estaba latente desde el principio: ya afectaba a `dossier_serie` en cualquier variación
+interanual negativa.
+
+Se normaliza **solo** el menos matemático. La raya `–` (U+2013) queda afuera a propósito:
+separa rangos («2017–2026») y convertirla en signo inventaría un «-2026».
+
+**La clase de error:** un carácter Unicode que *se ve* como otro. Aparece en cualquier
+parseo de texto generado por un modelo.
+
+---
+
+## gzip escribe la hora en la cabecera
+
+**Módulo:** `scripts/snapshot.py` · **Test:** `tests/test_snapshot.py`
+
+Dos exports de la **misma** base daban binarios distintos: gzip guarda la hora de creación y
+el nombre del archivo original en la cabecera. Contenido descomprimido idéntico (mismo md5),
+bytes 4-7 distintos.
+
+Eso rompía la premisa del workflow mensual: `git diff --quiet` habría dado siempre que sí y
+el job habría commiteado 217 KB todos los meses aunque no cambiara un reporte — exactamente
+la churn que la cadencia mensual busca evitar.
+
+Se escribe con `mtime=0` y sin nombre incrustado.
+
+**La clase de error:** metadata no determinista en un artefacto que se versiona. Aplica a
+cualquier formato comprimido o empaquetado.
+
+---
+
+## El IPC oficial 2007-2015 está intervenido
+
+**Módulo:** `platec/data.py`, tabla `quality_periods`
+
+No es un error de parseo sino de credibilidad, y por eso está en la base como bandera y no en
+el código como excepción: `data.get_series` excluye `INTERVENIDO` por defecto.
+
+La trampa práctica es usarlo **como deflactor**: haría que ese tramo se viera artificialmente
+bien en términos reales, sin que aparezca ningún hueco ni ningún error.
+
+**La clase de error:** dato presente, sintácticamente impecable, no confiable. La única
+defensa es una bandera de calidad de primera clase en el esquema.
+
+---
+
+## `apis.datos.gob.ar` corta por timeout de forma intermitente
+
+**Módulo:** `scripts/ingest.py`
+
+No es silencioso —falla visiblemente— pero es **parcial**: una corrida puede traer cuatro de
+las siete series y las otras tres fallan. El 2026-08-26 hicieron falta cuatro corridas para
+completar.
+
+La ingesta es incremental y no borra, así que reintentar es seguro. Pero hay que **mirar la
+salida** y reintentar hasta que no queden `✗`, y `snapshot.py export` se niega a congelar una
+base con series vacías justamente por esto.
+
+---
+
+## El preview de Comtrade tiene techo de 500 registros
+
+**Módulo:** `scripts/ingest_comtrade.py`
+
+Argentina contra todos los socios, un año, ambos flujos, da ~350: entra, pero con poco aire.
+Si alguna vez se baja a nivel de capítulo HS, explota.
+
+El ingestor **falla en vez de truncar callado**: un agregado calculado sobre un subconjunto
+arbitrario de socios sería peor que un error, porque nadie lo notaría.
+
+**La clase de error:** paginación implícita. Una API que devuelve «los primeros N» sin decir
+que hay más.
