@@ -454,3 +454,188 @@ def diagnostico(df: pd.DataFrame) -> pd.DataFrame:
                       "KPSS p": round(r.kpss_p, 3), "veredicto": r.veredicto,
                       "orden I(d)": orden_integracion(df[col]), "n": r.n})
     return pd.DataFrame(filas).set_index("serie")
+
+
+# ---------------------------------------------------------------------------
+# 10. Estabilidad de parámetros: ¿la muestra es un régimen o varios?
+# ---------------------------------------------------------------------------
+# EL PROBLEMA. El VAR mensual se estima POOLEADO sobre 2017-2026, una muestra que
+# cruza al menos dos cambios de régimen (la crisis de 2018-19 y la devaluación de
+# diciembre de 2023). El VAR diario, en cambio, se parte por régimen cambiario
+# porque poolear una brecha de 0,5% con una de 82% mezcla poblaciones. Esa
+# asimetría de criterio dentro del mismo proyecto es lo que estas funciones vienen
+# a resolver.
+#
+# POR QUÉ NO SE PARTE LA MUESTRA MENSUAL. Porque no se puede: 112 meses, y un VAR
+# de cinco variables con dos rezagos tiene once parámetros por ecuación. El corte
+# de diciembre de 2023 deja 82 y 30 meses; con 30 observaciones y once parámetros
+# no se estima nada creíble, y menos una IRF con bandas por bootstrap. La salida
+# no es estimar por régimen —eso es lo que la frecuencia diaria permite y la
+# mensual no— sino TESTEAR si el pooleo se sostiene.
+#
+# POR QUÉ SUP-WALD Y NO CHOW. Chow exige una fecha de quiebre conocida de
+# antemano. Elegirla mirando los datos y después usar los valores críticos de una
+# chi-cuadrado es hacer trampa: bajo la nula la fecha no está identificada
+# (el problema de Davies) y el máximo sobre fechas candidatas tiene una
+# distribución propia, no la del estadístico en una fecha fija.
+#
+# POR QUÉ EL BOOTSTRAP DE REGRESORES FIJOS. Las tablas de Andrews (1993) suponen
+# homocedasticidad. El bootstrap de Hansen (2000) —regenerar la dependiente como
+# el residuo por un normal estándar, manteniendo los regresores— da p-valores
+# válidos bajo heterocedasticidad y sin exigir que los regresores sean
+# estacionarios. Es además el mismo criterio que ya usa el módulo para las bandas
+# de la IRF: cuando la distribución asintótica no es de fiar, se simula.
+#
+# POR QUÉ ECUACIÓN POR ECUACIÓN. Un test de sistema sobre las cinco ecuaciones
+# tendría 55 parámetros contra 112 observaciones. No hay muestra para eso.
+
+
+@dataclass
+class Estabilidad:
+    ecuacion: str
+    sup_wald: float
+    fecha_quiebre: object      # la fecha que maximiza el estadístico
+    critico_5: float           # percentil 95 de la nula simulada
+    p_valor: float
+    n: int
+    k: int                     # parámetros por ecuación
+    trimming: float
+    repl: int
+
+    @property
+    def rechaza(self) -> bool:
+        return self.p_valor < 0.05
+
+    def __str__(self):
+        veredicto = "RECHAZA estabilidad" if self.rechaza else "no rechaza"
+        return (f"{self.ecuacion}: supW={self.sup_wald:.2f} "
+                f"(crítico 5% {self.critico_5:.2f}) p={self.p_valor:.3f} "
+                f"— {veredicto}, máximo en {self.fecha_quiebre}")
+
+
+def _diseno_ecuacion(v: pd.DataFrame, ecuacion: str, p: int = 2):
+    """Una ecuación del VAR como regresión: y_t contra constante y p rezagos de todo."""
+    cols = {f"{c}_l{l}": v[c].shift(l) for l in range(1, p + 1) for c in v.columns}
+    X = pd.DataFrame(cols, index=v.index)
+    X.insert(0, "const", 1.0)
+    d = pd.concat([v[ecuacion].rename("_y"), X], axis=1).dropna()
+    return (d["_y"].to_numpy(dtype=float), d.drop(columns="_y").to_numpy(dtype=float),
+            list(d.columns[1:]), d.index)
+
+
+def _ssr(y: np.ndarray, X: np.ndarray) -> float:
+    """Suma de cuadrados de los residuos por ecuaciones normales (rápido: se llama miles de veces)."""
+    try:
+        b = np.linalg.solve(X.T @ X, X.T @ y)
+    except np.linalg.LinAlgError:                       # tramo casi singular
+        b = np.linalg.lstsq(X, y, rcond=None)[0]
+    r = y - X @ b
+    return float(r @ r)
+
+
+def _sup_wald(y: np.ndarray, X: np.ndarray, trimming: float) -> tuple[float, int]:
+    """Máximo del estadístico de Chow sobre las fechas candidatas. Devuelve (supW, índice)."""
+    n, k = X.shape
+    s_r = _ssr(y, X)
+    lo = max(int(np.floor(n * trimming)), k + 2)
+    hi = min(int(np.ceil(n * (1 - trimming))), n - k - 2)
+    mejor, corte = -np.inf, lo
+    for t in range(lo, hi):
+        s_u = _ssr(y[:t], X[:t]) + _ssr(y[t:], X[t:])
+        if s_u <= 0:
+            continue
+        f = ((s_r - s_u) / k) / (s_u / (n - 2 * k))
+        if f > mejor:
+            mejor, corte = f, t
+    return float(mejor), corte
+
+
+def estabilidad(v: pd.DataFrame, ecuacion: str, p: int = 2, trimming: float = 0.15,
+                repl: int = 999, seed: int = 7) -> Estabilidad:
+    """
+    ¿Los coeficientes de una ecuación del VAR son los mismos en toda la muestra?
+
+    Sup-Wald sobre todas las fechas candidatas del tramo central (`trimming` recorta
+    las puntas, donde no hay observaciones para estimar los dos tramos), con
+    p-valor por bootstrap de regresores fijos (Hansen 2000).
+
+    ATENCIÓN: no rechazar NO es evidencia de estabilidad mientras no se sepa qué
+    podía detectar el test. Para eso está `potencia_estabilidad`, y en esta muestra
+    la respuesta es incómoda.
+    """
+    y, X, _, idx = _diseno_ecuacion(v, ecuacion, p)
+    n, k = X.shape
+    obs, corte = _sup_wald(y, X, trimming)
+
+    # Nula simulada: la dependiente se regenera como el residuo por un normal
+    # estándar, con los regresores intactos.
+    b = np.linalg.lstsq(X, y, rcond=None)[0]
+    u = y - X @ b
+    rng = np.random.default_rng(seed)
+    nula = np.array([_sup_wald(u * rng.standard_normal(n), X, trimming)[0]
+                     for _ in range(repl)])
+
+    return Estabilidad(
+        ecuacion=ecuacion, sup_wald=obs, fecha_quiebre=idx[corte].date(),
+        critico_5=float(np.quantile(nula, 0.95)),
+        p_valor=float((np.sum(nula >= obs) + 1) / (repl + 1)),
+        n=n, k=k, trimming=trimming, repl=repl)
+
+
+# Formas de quiebre contra las que se mide la potencia. No son intercambiables: el
+# sup-Wald prueba un quiebre en TODOS los coeficientes a la vez, así que ve muy bien
+# un cambio de régimen completo y muy mal un cambio en un solo canal — gasta once
+# grados de libertad para detectar un movimiento en uno.
+_QUIEBRES = ("pendientes", "constante", "un_coeficiente")
+
+
+def potencia_estabilidad(v: pd.DataFrame, ecuacion: str, tipo: str = "pendientes",
+                         tamanos=(0.5, 1.0, 2.0), coeficiente: str | None = None,
+                         p: int = 2, trimming: float = 0.15, repl_nula: int = 499,
+                         repl: int = 300, seed: int = 11) -> pd.DataFrame:
+    """
+    ¿Con qué probabilidad `estabilidad` detectaría un quiebre de un tamaño dado?
+
+    Sin esto, "no se rechaza estabilidad" es una frase sin contenido: puede
+    significar que no hay quiebre o que el test no vería uno aunque lo hubiera.
+
+    `tipo` elige la forma del quiebre y qué miden los `tamanos`:
+      - 'pendientes'      : todas las pendientes se multiplican por (1 + tamaño).
+      - 'constante'       : salto de nivel, en desvíos estándar del residuo.
+      - 'un_coeficiente'  : salto en `coeficiente`, en errores estándar de su estimación.
+    """
+    if tipo not in _QUIEBRES:
+        raise ValueError(f"tipo desconocido: {tipo} (usar {list(_QUIEBRES)})")
+    y, X, nombres, _ = _diseno_ecuacion(v, ecuacion, p)
+    n, k = X.shape
+    b = np.linalg.lstsq(X, y, rcond=None)[0]
+    u = y - X @ b
+    rng = np.random.default_rng(seed)
+
+    critico = float(np.quantile(
+        [_sup_wald(u * rng.standard_normal(n), X, trimming)[0] for _ in range(repl_nula)],
+        0.95))
+
+    corte = int(n * 0.75)
+    if tipo == "un_coeficiente":
+        if coeficiente is None:
+            raise ValueError("con tipo='un_coeficiente' hay que pasar `coeficiente`")
+        j = nombres.index(coeficiente)
+        se = float(np.sqrt(_ssr(y, X) / (n - k) * np.linalg.inv(X.T @ X)[j, j]))
+
+    filas = []
+    for tam in tamanos:
+        detectados = 0
+        for _ in range(repl):
+            ys = X @ b + u * rng.standard_normal(n)
+            if tipo == "pendientes":
+                ys[corte:] += tam * (X[corte:, 1:] @ b[1:])
+            elif tipo == "constante":
+                ys[corte:] += tam * float(u.std())
+            else:
+                ys[corte:] += tam * se * X[corte:, j]
+            if _sup_wald(ys, X, trimming)[0] > critico:
+                detectados += 1
+        filas.append({"tipo": tipo, "tamaño": tam, "potencia": detectados / repl,
+                      "critico_5": critico, "repl": repl})
+    return pd.DataFrame(filas)

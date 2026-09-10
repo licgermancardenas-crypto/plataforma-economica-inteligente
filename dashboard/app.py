@@ -685,6 +685,24 @@ PARES_DIARIOS = [("riesgo", "tc"), ("riesgo", "brecha"), ("brecha", "riesgo"),
                  ("tc", "riesgo"), ("brecha", "tc")]
 
 
+@st.cache_data(ttl=3600, show_spinner="Testeando estabilidad de parámetros (bootstrap)...")
+def _estabilidad(anio: str):
+    """Sup-Wald por ecuación + la función de potencia de la ecuación del IPC."""
+    from platec import econometria as ec
+
+    df = data.get_frame(CADENA, freq="M", how="last", start=f"{anio}-01-01")
+    niveles = pd.DataFrame({k: np.log(df[c]) for k, c in zip(ETIQUETA, CADENA)}).dropna()
+    v = niveles.diff().mul(100).dropna()
+    tests = [ec.estabilidad(v, eq, repl=499) for eq in ETIQUETA]
+    # La potencia se mide sobre la ecuación del IPC porque es la que sostiene el
+    # pass-through, que es el resultado que se publica arriba.
+    general = ec.potencia_estabilidad(v, "ipc", "pendientes", (0.5, 1.0, 2.0),
+                                      repl_nula=299, repl=200)
+    puntual = ec.potencia_estabilidad(v, "ipc", "un_coeficiente", (6.0, 15.0, 30.0),
+                                      coeficiente="tc_l1", repl_nula=299, repl=200)
+    return tests, general, puntual
+
+
 @st.cache_data(ttl=3600, show_spinner="Estimando el VAR diario por régimen cambiario...")
 def _var_diario():
     """
@@ -1003,6 +1021,72 @@ def pagina_econometria():
                    "un salto de viernes a lunes como un período. Es práctica estándar en "
                    "datos financieros diarios, pero introduce heterocedasticidad — otro "
                    "motivo para leer los p-valores como orden de magnitud.")
+
+    st.divider()
+    seccion("¿La muestra es un régimen o varios?")
+    tests, pot_general, pot_puntual = _estabilidad(anio)
+    e1, e2 = st.columns([3, 2])
+    with e1, st.container(border=True):
+        st.markdown("**Sup-Wald por ecuación** · p-valor por bootstrap de regresores fijos")
+        tabla = pd.DataFrame([{
+            "ecuación": ETIQUETA[r.ecuacion], "supW": round(r.sup_wald, 2),
+            "crítico 5%": round(r.critico_5, 2), "p": round(r.p_valor, 3),
+            "máximo en": str(r.fecha_quiebre)[:7],
+            "veredicto": "⚠ rechaza" if r.rechaza else "— no rechaza",
+        } for r in tests]).set_index("ecuación")
+        st.dataframe(tabla, **ANCHO)
+        st.caption(
+            "**No se parte la muestra: no se puede.** Son ~110 meses y once parámetros por "
+            "ecuación; el corte de dic-23 dejaría 30 meses de un lado. Estimar por régimen "
+            "es lo que la frecuencia diaria permite y la mensual no, así que acá se testea "
+            "si el pooleo se sostiene. Sup-Wald y no Chow porque la fecha no se conoce de "
+            "antemano, y elegirla mirando los datos invalida los valores críticos de tabla.")
+    with e2, st.container(border=True):
+        st.subheader("Dónde ponen el quiebre")
+        st.markdown(
+            "Ninguna ecuación rechaza. Pero mirá **dónde** cada una pone su máximo: el tipo "
+            "de cambio y el IPC, los dos en **diciembre de 2023**; la actividad y el riesgo "
+            "país, en **abril-mayo de 2020**.\n\n"
+            "El test ubica los quiebres donde la historia dice que están —la devaluación y "
+            "la pandemia— pero el estadístico no llega al umbral.")
+
+    with st.container(border=True):
+        st.markdown("**Y ahora la parte incómoda: ¿qué podía detectar este test?**")
+        pc1, pc2 = st.columns(2)
+        for col, pot, titulo, unidad in (
+                (pc1, pot_general, "Quiebre en TODAS las pendientes", "pendientes ×"),
+                (pc2, pot_puntual, "Quiebre SOLO en el pass-through", "e.e. en tc_l1")):
+            with col:
+                st.markdown(f"*{titulo}*")
+                fig = go.Figure(go.Bar(
+                    x=[f"{1 + s:.1f}" if "pendientes" in unidad else f"{s:.0f}"
+                       for s in pot["tamaño"]],
+                    y=pot["potencia"] * 100,
+                    marker=dict(color=PALETA[0] if "TODAS" in titulo else PALETA[1]),
+                    text=[f"{v:.0%}" for v in pot["potencia"]], textposition="outside",
+                    textfont=dict(color="#cbd5e1", size=11),
+                    hovertemplate="%{x}<br>potencia %{y:.0f}%<extra></extra>"))
+                fig.add_hline(y=5, line=dict(color=COLOR["gris"], width=1, dash="dot"),
+                              annotation_text="tamaño del test (5%)",
+                              annotation_font=dict(size=9, color=COLOR["gris"]))
+                _estilo(fig, height=230, leyenda=False)
+                fig.update_layout(yaxis_title="potencia (%)", xaxis_title=unidad,
+                                  margin=dict(t=20, b=24, l=8, r=8))
+                fig.update_yaxes(range=[0, 115])
+                st.plotly_chart(fig, **ANCHO)
+        st.caption(
+            "**«No se rechaza» no significa nada sin esto.** El sup-Wald prueba un quiebre en "
+            "los once coeficientes a la vez: gasta todos los grados de libertad del modelo "
+            "para detectar un movimiento en uno solo. Contra un cambio de régimen completo ve "
+            "muy bien —duplicar las pendientes se detecta casi siempre— y contra un cambio en "
+            "el pass-through, casi nada: haría falta un salto de treinta errores estándar, "
+            "que ya no es un quiebre sino otra economía.")
+        st.info(
+            "**Qué se puede afirmar.** Se descarta un cambio de régimen generalizado. **No** "
+            "se descarta un cambio en el pass-through en particular, que es justo el "
+            "parámetro del que dependen las IRF de arriba — así que sus bandas siguen sin "
+            "incorporar incertidumbre de régimen. No por falta de test, sino porque con ~110 "
+            "meses ese test no existe. El camino para cerrarlo es más datos, no mejor método.")
 
     st.divider()
     seccion("Traslado a precios")

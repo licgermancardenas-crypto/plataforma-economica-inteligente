@@ -231,8 +231,10 @@ mover el resultado (RMSE 1.68 vs. naive 2.42, +31%).
 
 - **Tipo de cambio real:** el pass-through usa TC nominal. Para RER bilateral falta CPI externo
   (FRED) — deflactar solo por precios locales (`platec.stats.deflactar`) es aproximado.
-- **Quiebres estructurales:** la muestra 2017-2026 cruza cambios de régimen (2018-19, 2023-24).
-  Conviene testear estabilidad de parámetros (Chow / ventanas móviles) antes de proyectar.
+- **Quiebres estructurales:** hecho, y el resultado está en §7. Resumen: no se rechaza
+  estabilidad en ninguna de las cinco ecuaciones, pero el test no tiene potencia contra un
+  quiebre en un canal aislado, así que eso no habilita a decir que los parámetros son
+  estables.
 - **I(2) en el IPC:** para un modelo de largo plazo riguroso, evaluar sistema en la *tasa* de
   inflación o un VECM I(2), no el nivel.
 - **Tabla de Granger mensual (§5):** sigue mostrándose con `p mínimo sobre 6 rezagos`.
@@ -243,3 +245,92 @@ mover el resultado (RMSE 1.68 vs. naive 2.42, +31%).
   podría usar 2002-2013 y cubrir la salida de la convertibilidad.
 - **Nowcasting (Etapa 7):** con estas relaciones + variables de alta frecuencia (TC diario) se
   puede estimar el IPC del mes en curso antes de la publicación oficial.
+
+---
+
+## 7. Estabilidad de parámetros: qué se testeó y qué no se puede saber
+
+**El problema.** El VAR mensual se estima **pooleado** sobre 2017-2026, una muestra que cruza
+la crisis de 2018-19 y la devaluación de diciembre de 2023. El VAR diario, en cambio, se parte
+por régimen cambiario (§5c) porque poolear una brecha de 0,5% con una de 82% mezcla
+poblaciones. Esa asimetría de criterio dentro del mismo proyecto es lo que se resuelve acá.
+
+**Por qué no se parte la muestra mensual: no se puede.** Son 112 meses, y un VAR de cinco
+variables con dos rezagos tiene once parámetros por ecuación. Los cortes disponibles dejan:
+
+| Corte | Meses a cada lado |
+|---|---|
+| Crisis 2018-19 (PASO, ago-19) | 30 / 82 |
+| Cepo II (dic-19) | 34 / 78 |
+| Devaluación (dic-23) | 82 / 30 |
+
+Con 30 observaciones y once parámetros no se estima nada creíble, y menos una IRF con bandas
+por bootstrap. **Estimar por régimen es lo que la frecuencia diaria permite y la mensual no.**
+Lo que sí se puede es testear si el pooleo se sostiene.
+
+### El test
+
+Sup-Wald sobre todas las fechas candidatas del tramo central (recorte del 15% en cada punta),
+con p-valor por **bootstrap de regresores fijos** (Hansen 2000). Dos decisiones:
+
+- **No Chow**, que exige fecha conocida de antemano. Elegirla mirando los datos y después usar
+  los valores críticos de una chi-cuadrado es hacer trampa: bajo la nula la fecha no está
+  identificada —el problema de Davies— y el máximo sobre fechas tiene distribución propia.
+- **No las tablas de Andrews (1993)**, que suponen homocedasticidad. El bootstrap de Hansen
+  regenera la dependiente como el residuo por un normal estándar manteniendo los regresores,
+  y da p-valores válidos bajo heterocedasticidad. Mismo criterio que las bandas de la IRF:
+  cuando la asintótica no es de fiar, se simula.
+
+Ecuación por ecuación, porque un test de sistema tendría 55 parámetros contra 112 datos.
+
+| Ecuación | supW | crítico 5% | p | Máximo en |
+|---|---|---|---|---|
+| riesgo país | 1,91 | 3,70 | 0,527 | 2020-04 |
+| base monetaria | 2,64 | 3,36 | 0,134 | 2021-02 |
+| tipo de cambio | 5,27 | 10,54 | 0,369 | **2023-12** |
+| IPC | 4,80 | 7,99 | 0,243 | **2023-12** |
+| EMAE | 3,72 | 5,78 | 0,159 | 2020-05 |
+
+**Ninguna ecuación rechaza.** Vale la pena notar dónde ponen el máximo: el tipo de cambio y el
+IPC, los dos en diciembre de 2023; la actividad y el riesgo país, en abril-mayo de 2020. El
+test ubica los quiebres donde la historia dice que están —la devaluación y la pandemia— pero
+el estadístico no llega.
+
+### La parte incómoda: la potencia
+
+**«No se rechaza» no significa nada mientras no se sepa qué podía detectar el test.** Medido
+por Monte Carlo sobre la ecuación del IPC, que es la que sostiene el pass-through:
+
+| Forma del quiebre | Tamaño | Potencia |
+|---|---|---|
+| Todas las pendientes | ×1,5 | 39% |
+| Todas las pendientes | **×2,0** | **97%** |
+| Todas las pendientes | ×3,0 | 100% |
+| Salto de nivel | 1 desvío del residuo | 26% |
+| Salto de nivel | **2 desvíos** | **97%** |
+| Solo el pass-through (`tc_l1`) | 6 errores estándar | 5% |
+| Solo el pass-through (`tc_l1`) | 15 errores estándar | 12% |
+| Solo el pass-through (`tc_l1`) | 30 errores estándar | 80% |
+
+La lectura es directa y tiene una explicación mecánica: **el sup-Wald prueba un quiebre en los
+once coeficientes a la vez**, así que gasta todos los grados de libertad del modelo para
+detectar un movimiento en uno solo. Contra un cambio de régimen completo ve muy bien; contra
+un cambio en un canal específico, casi nada — haría falta que el coeficiente del pass-through
+saltara **treinta errores estándar** para que el test lo viera la mayoría de las veces, y un
+salto así ya no es un quiebre, es otra economía.
+
+### Qué se puede afirmar, entonces
+
+- **Se descarta un cambio de régimen generalizado.** Un quiebre que duplicara las pendientes o
+  moviera el nivel dos desvíos se habría detectado con 97% de probabilidad. No aparece.
+- **NO se descarta un cambio en el pass-through en particular**, que es justamente el
+  parámetro del que dependen las IRF de §5. El test es ciego a eso en esta muestra.
+- Por lo tanto **las bandas de la IRF siguen sin incorporar incertidumbre de régimen**. No
+  porque no se haya testeado, sino porque con 112 meses el test que responde esa pregunta no
+  existe. Es una limitación de la muestra, no del método.
+
+El camino real para cerrarlo no es un test mejor: es más datos. El VAR diario ya se estima por
+régimen porque tiene 3.264 días. Llevar la cadena monetaria a frecuencia diaria —o al menos el
+tramo TC → precios, con IPC de alta frecuencia— es lo que permitiría partir la muestra en vez
+de testear si hace falta partirla.
+

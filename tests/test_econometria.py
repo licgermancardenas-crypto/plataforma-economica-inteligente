@@ -210,3 +210,100 @@ def test_curva_phillips_estructura():
     assert ph.beta_desempleo < 0
     assert ph.p_valor < 0.05
     assert ph.forma == "nivel"
+
+
+# ---------------------------------------------------------------------------
+# Estabilidad de parámetros
+# ---------------------------------------------------------------------------
+# Se prueba contra series sintéticas con un quiebre PLANTADO, que es la única forma
+# de saber si el test ve lo que dice ver. Lo que más importa acá no es que rechace
+# cuando hay quiebre, sino la función de potencia: sin ella, "no se rechaza
+# estabilidad" no distingue entre no haber quiebre y no poder verlo.
+def _sistema(n=140, quiebre=None, seed=0):
+    """
+    Dos series; la primera sigue a la segunda con un rezago. Si `quiebre` viene, a
+    partir de la mitad los coeficientes se multiplican por ese factor.
+    """
+    rng = np.random.default_rng(seed)
+    x = rng.normal(size=n)
+    y = np.zeros(n)
+    for t in range(2, n):
+        f = quiebre if (quiebre and t >= n // 2) else 1.0
+        y[t] = f * (0.45 * y[t - 1] + 0.60 * x[t - 1]) + rng.normal()
+    return pd.DataFrame({"y": y, "x": x},
+                        index=pd.date_range("2010-01-01", periods=n, freq="MS"))
+
+
+def test_no_rechaza_estabilidad_cuando_no_hay_quiebre():
+    """Tamaño del test: sobre una serie sin quiebre no puede rechazar sistemáticamente."""
+    r = ec.estabilidad(_sistema(seed=3), "y", repl=199)
+    assert not r.rechaza, f"falso positivo: p={r.p_valor}"
+
+
+def test_rechaza_estabilidad_ante_un_quiebre_grande_plantado():
+    r = ec.estabilidad(_sistema(quiebre=3.0, seed=1), "y", repl=199)
+    assert r.rechaza, f"no vio un quiebre que triplica los coeficientes: p={r.p_valor}"
+
+
+def test_encuentra_el_quiebre_cerca_de_donde_se_plantó():
+    d = _sistema(quiebre=3.0, seed=1)
+    r = ec.estabilidad(d, "y", repl=99)
+    plantado = d.index[len(d) // 2].date()
+    assert abs((r.fecha_quiebre - plantado).days) < 400, (
+        f"lo ubicó en {r.fecha_quiebre}, se plantó en {plantado}")
+
+
+def test_el_trimming_excluye_las_puntas():
+    """En los bordes no hay observaciones para estimar los dos tramos."""
+    d = _sistema(seed=5)
+    r = ec.estabilidad(d, "y", trimming=0.30, repl=49)
+    dentro = d.index[int(len(d) * 0.30)].date(), d.index[int(len(d) * 0.70)].date()
+    assert dentro[0] <= r.fecha_quiebre <= dentro[1]
+
+
+def test_el_p_valor_nunca_es_cero():
+    """(extremos + 1) / (repl + 1): un bootstrap finito no puede estimar evidencia infinita."""
+    r = ec.estabilidad(_sistema(quiebre=6.0, seed=2), "y", repl=49)
+    assert r.p_valor >= 1 / 50
+
+
+def test_es_determinista_a_igual_semilla():
+    d = _sistema(seed=4)
+    a = ec.estabilidad(d, "y", repl=99, seed=7)
+    b = ec.estabilidad(d, "y", repl=99, seed=7)
+    assert a.p_valor == b.p_valor and a.sup_wald == b.sup_wald
+
+
+def test_la_potencia_crece_con_el_tamaño_del_quiebre():
+    p = ec.potencia_estabilidad(_sistema(seed=6), "y", tipo="pendientes",
+                                tamanos=(0.2, 2.0), repl_nula=99, repl=60)
+    assert p["potencia"].iloc[1] > p["potencia"].iloc[0]
+    assert p["potencia"].iloc[1] > 0.5, "un quiebre que triplica tiene que verse"
+
+
+def test_un_quiebre_en_un_solo_coeficiente_se_ve_mucho_peor_que_uno_general():
+    """
+    EL HALLAZGO QUE JUSTIFICA LA FUNCIÓN DE POTENCIA. El sup-Wald prueba un quiebre
+    en TODOS los coeficientes a la vez: gasta todos los grados de libertad del
+    modelo para detectar un movimiento en uno solo. Contra un cambio de régimen
+    completo ve bien; contra un cambio en un canal específico —que es justamente lo
+    que le importaría al pass-through— casi no ve nada.
+    """
+    d = _sistema(seed=8)
+    general = ec.potencia_estabilidad(d, "y", tipo="pendientes", tamanos=(1.0,),
+                                      repl_nula=99, repl=60)["potencia"].iloc[0]
+    puntual = ec.potencia_estabilidad(d, "y", tipo="un_coeficiente", coeficiente="x_l1",
+                                      tamanos=(3.0,), repl_nula=99, repl=60)["potencia"].iloc[0]
+    assert general > puntual
+
+
+def test_la_potencia_exige_nombrar_el_coeficiente():
+    with pytest.raises(ValueError, match="coeficiente"):
+        ec.potencia_estabilidad(_sistema(), "y", tipo="un_coeficiente",
+                                tamanos=(1.0,), repl_nula=9, repl=5)
+
+
+def test_un_tipo_de_quiebre_desconocido_falla_temprano():
+    with pytest.raises(ValueError, match="tipo desconocido"):
+        ec.potencia_estabilidad(_sistema(), "y", tipo="estacional",
+                                repl_nula=9, repl=5)

@@ -20,9 +20,10 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
   z-score/outliers, deflactación) en `platec/stats.py`.
 - ✅ **Etapa 6-7 — Módulo de econometría (`platec/econometria.py`, `platec/nowcast.py`).**
   Estacionariedad (ADF+KPSS), orden de integración, Granger, cointegración de Johansen,
-  pass-through, VAR + impulso-respuesta, curva de Phillips y nowcasting de inflación con ML
-  (ElasticNet, walk-forward). Reporte: `python3 scripts/analisis.py`. Hallazgos en
-  [`docs/hallazgos_econometricos.md`](docs/hallazgos_econometricos.md).
+  pass-through, VAR + impulso-respuesta, curva de Phillips, nowcasting de inflación con ML
+  (ElasticNet, walk-forward) y **estabilidad de parámetros** (sup-Wald con bootstrap de
+  regresores fijos, con su función de potencia). Reporte: `python3 scripts/analisis.py`.
+  Hallazgos en [`docs/hallazgos_econometricos.md`](docs/hallazgos_econometricos.md).
 - ✅ **Etapa 4-5 — Dashboard (`dashboard/app.py`, Streamlit + Plotly).** Cockpit de
   indicadores, detalle por indicador con gráficos y tablas exportables, y panel de
   econometría. Corre local con `streamlit run dashboard/app.py`.
@@ -62,7 +63,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (184 casos)
+python3 -m pytest                        # suite de tests (194 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -150,6 +151,35 @@ importaciones: **sobrefacturar exige acceso al dólar oficial, que es lo que el 
 subfacturar exportaciones no exige permiso de nadie.** El control de cambios no elimina el
 arbitraje, lo empuja hacia el lado que no controla. Detalle y límites en
 [`docs/comercio_espejo.md`](docs/comercio_espejo.md).
+
+### «No se rechaza» no es lo mismo que «es estable»
+El VAR mensual se estima **pooleado** sobre una muestra que cruza la crisis de 2018-19 y la
+devaluación de dic-2023, mientras el VAR diario sí se parte por régimen. Esa asimetría se
+resolvió testeando, no partiendo: con ~110 meses y once parámetros por ecuación, el corte de
+dic-23 dejaría 30 observaciones de un lado y ahí no se estima nada.
+
+El sup-Wald (fecha de quiebre desconocida, p-valor por bootstrap de regresores fijos à la
+Hansen 2000) **no rechaza en ninguna de las cinco ecuaciones** — aunque el TC y el IPC ponen
+los dos su máximo en **diciembre de 2023**, y la actividad y el riesgo país en **abril-mayo de
+2020**: el test ubica los quiebres donde la historia dice que están, pero el estadístico no
+llega.
+
+Lo importante es lo que vino después. **Un "no se rechaza" sin función de potencia no dice
+nada**, así que se midió por Monte Carlo qué podía detectar el test:
+
+| Forma del quiebre | Tamaño | Potencia |
+|---|---|---|
+| Todas las pendientes | ×2,0 | **97%** |
+| Salto de nivel | 2 desvíos del residuo | **97%** |
+| Solo el pass-through (`tc_l1`) | 15 errores estándar | 12% |
+| Solo el pass-through (`tc_l1`) | 30 errores estándar | 80% |
+
+El sup-Wald prueba un quiebre en los once coeficientes a la vez: gasta todos los grados de
+libertad del modelo para detectar un movimiento en uno. Conclusión honesta: **se descarta un
+cambio de régimen generalizado, no se descarta un cambio en el pass-through** — que es justo
+el parámetro del que dependen las IRF. Sus bandas siguen sin incorporar incertidumbre de
+régimen, no por falta de test sino porque con 110 meses ese test no existe. Detalle en
+[`docs/hallazgos_econometricos.md`](docs/hallazgos_econometricos.md) §7.
 
 ### La capa de IA no puede inventar un número
 `platec/narrador.py` redacta las lecturas con un LLM, pero el modelo **no calcula**: recibe

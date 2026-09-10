@@ -453,8 +453,10 @@ def dossier_canal(banda, ordenes=None, *, shock: str, respuesta: str,
         "I(2) y el tipo de cambio I(1), órdenes distintos que no admiten una cointegración "
         "estándar. Acá hay dinámica de corto plazo; no hay relación de largo plazo estimada.",
         "La muestra mensual cruza cambios de régimen (2018-19, 2023-24) y el VAR se estima "
-        "pooleado sobre todos ellos: no se testeó estabilidad de parámetros. Los "
-        "coeficientes son un promedio entre regímenes que pueden no compartir mecanismo.",
+        "pooleado sobre todos ellos. Se testeó estabilidad con sup-Wald y no se rechaza en "
+        "ninguna ecuación, pero ese test no tiene potencia contra un quiebre en un canal "
+        "aislado: descarta un cambio de régimen generalizado, no un cambio en el "
+        "pass-through. Las bandas no incorporan incertidumbre de régimen.",
     ]
     if h not in signif:
         caveats.append(
