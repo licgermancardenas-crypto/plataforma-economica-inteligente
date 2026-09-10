@@ -42,7 +42,23 @@ HS de 6 dígitos, que con el preview gratuito de Comtrade no entran (techo de 50
 
 ---
 
-## 3. El pass-through usa tipo de cambio nominal
+## 3. El generador sintético no está validado contra nada
+
+**Estado:** por construcción, y no tiene arreglo dentro del propio simulador.
+
+Un detector entrenado sobre `platec/firmas_sinteticas.py` encuentra las maniobras que
+nosotros mismos inyectamos. Sirve para comparar métodos entre sí, medir potencia y armar el
+pipeline; **no** como evidencia sobre el lavado real en Argentina.
+
+**Qué haría falta:** una muestra etiquetada real, que en la práctica significa un convenio
+con la UIF o con un organismo que tenga acceso a reportes de operación sospechosa. Sin eso,
+la validación externa posible es indirecta: comprobar que el agregado sintético reproduce
+momentos observados (ya se hace con el β del canal exportador) y que los detectores
+calibrados acá se comportan de forma parecida sobre datos públicos de otras jurisdicciones.
+
+---
+
+## 4. El pass-through usa tipo de cambio nominal
 
 **Estado:** aproximación declarada.
 
@@ -54,7 +70,7 @@ las pendientes más baratas.
 
 ---
 
-## 4. La tabla de Granger mensual usa un criterio que el proyecto no cree
+## 5. La tabla de Granger mensual usa un criterio que el proyecto no cree
 
 **Estado:** deuda técnica con consecuencia metodológica.
 
@@ -67,7 +83,7 @@ Granger en el dossier del LLM, de donde hoy está excluido a propósito.
 
 ---
 
-## 5. El IPC resulta I(2)
+## 6. El IPC resulta I(2)
 
 **Estado:** decidido para el corto plazo, abierto para el largo.
 
@@ -82,7 +98,7 @@ o un VECM I(2).
 
 ---
 
-## 6. El caché del narrador se pierde en cada reinicio
+## 7. El caché del narrador se pierde en cada reinicio
 
 **Estado:** costo, no rigor.
 
@@ -94,7 +110,7 @@ medidas.
 
 ---
 
-## 7. El job diario commitea aunque no haya datos nuevos
+## 8. El job diario commitea aunque no haya datos nuevos
 
 **Estado:** ruido en el historial.
 
@@ -108,7 +124,7 @@ confiable.
 
 ---
 
-## 8. Falta la deuda pública
+## 9. Falta la deuda pública
 
 **Estado:** bloqueado por la fuente.
 

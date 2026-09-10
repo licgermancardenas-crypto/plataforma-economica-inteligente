@@ -1739,6 +1739,161 @@ def pagina_espejo():
                 titulo="Lectura del analista — comercio espejo y brecha")
 
 # ---------------------------------------------------------------------------
+# Página: Firmas sintéticas
+# ---------------------------------------------------------------------------
+# ÚNICA PÁGINA DEL DASHBOARD QUE NO MUESTRA DATOS REALES. Todo lo que hay acá lo
+# generó `platec.firmas_sinteticas` a partir de una semilla. Por eso el aviso va
+# arriba de todo y no al pie: en una plataforma cuyo valor es que no inventa
+# números, la excepción tiene que anunciarse antes de que alguien lea una cifra.
+@st.cache_data(ttl=3600, show_spinner="Generando el panel sintético...")
+def _firmas(n: int, ejercicios: int, semilla: int, prevalencia: float, brecha: float):
+    from platec import firmas_sinteticas as fs
+
+    df = fs.generar(n_firmas=n, ejercicios=ejercicios, semilla=semilla,
+                    prevalencia=prevalencia, brecha=brecha)
+    return (df, fs.articula(df), fs.desvio_benford(df["ingresos"]),
+            fs.discrepancia_exportadora(df), fs.calibraciones())
+
+
+def pagina_firmas():
+    from platec import firmas_sinteticas as fs
+
+    st.markdown(
+        '<div class="hero"><h1>🧪 Firmas sintéticas</h1>'
+        '<p>Estados contables generados para investigación de detección · '
+        'detalle en docs/firmas_sinteticas.md</p></div>', unsafe_allow_html=True)
+    st.error(
+        "**Nada de esta página es un dato real.** Son empresas ficticias generadas por "
+        "`platec.firmas_sinteticas` a partir de una semilla, con etiqueta de verdad sobre "
+        "qué firma ejecuta qué maniobra. No representan a ninguna empresa existente y no "
+        "se persiste ninguna fila: cambiar la semilla cambia el panel entero. Lo único "
+        "real que hay acá es la estructura sectorial del INDEC contra la que se calibra.")
+
+    c1, c2, c3, c4 = st.columns(4)
+    n = c1.select_slider("Firmas", [200, 500, 1000, 2000], value=500)
+    prevalencia = c2.select_slider("Prevalencia", [0.01, 0.02, 0.05, 0.20, 0.40], value=0.02,
+                                   format_func=lambda v: f"{v:.0%}")
+    brecha = c3.select_slider("Brecha cambiaria", [0, 25, 50, 100, 150], value=100,
+                              format_func=lambda v: f"{v}%")
+    semilla = c4.number_input("Semilla", min_value=0, max_value=9999, value=7, step=1)
+
+    df, articula, benford, disc, cals = _firmas(n, 4, int(semilla), prevalencia, float(brecha))
+
+    seccion("Que el dataset no sea trivial")
+    k = st.columns(4)
+    with k[0], st.container(border=True):
+        st.metric("Articulación contable", "✅ cierra" if articula else "❌ ROTA")
+        st.caption("Activo = Pasivo + Patrimonio en todas las filas. Si no cierra, un "
+                   "detector encuentra la maniobra por la vía equivocada.")
+    with k[1], st.container(border=True):
+        st.metric("Desvío de Benford", f"{benford:.4f}",
+                  "conformidad < 0,006" if benford < 0.006 else "aceptable < 0,015",
+                  delta_color="off")
+        st.caption("Los montos salen de una lognormal. Con `uniform()` el problema se "
+                   "vuelve trivial: la desviación de Benford ya es un detector forense.")
+    with k[2], st.container(border=True):
+        marcadas = df.groupby("firma")["tipologia"].first().ne("limpia").mean()
+        st.metric("Firmas con maniobra", f"{marcadas:.1%}")
+        st.caption("En AML la prevalencia real es del orden de 1 en 1.000. Un dataset "
+                   "balanceado es un problema de clasificación fácil, no de detección.")
+    with k[3], st.container(border=True):
+        objetivo = df.attrs["objetivo_discrepancia"]
+        st.metric("Discrepancia exportadora", f"{disc:.4f}",
+                  (("✅ " if df.attrs["calibrado"] else "⚠ ") + f"objetivo {objetivo:.4f}")
+                  if brecha else "sin calibrar", delta_color="off")
+        st.caption("Calibrada contra el β que la plataforma estimó sobre datos reales "
+                   "en el módulo de comercio espejo.")
+
+    if brecha and not df.attrs["calibrado"]:
+        minimo = fs.share_exportador_minimo(float(brecha))
+        st.info(
+            f"**La calibración no es factible con esta prevalencia, y no es un bug del "
+            f"generador: es una restricción del propio β.** Para omitir el "
+            f"{objetivo:.1%} de las exportaciones sin que ninguna firma omita más del "
+            f"{fs.INTENSIDAD_MAXIMA:.0%} de las suyas, hace falta que al menos el "
+            f"**{minimo:.1%} del valor exportado** esté en manos de manipuladores. Con "
+            f"prevalencia {prevalencia:.0%} no llegan a tanto. Subila y mirá cómo el "
+            f"logrado alcanza al objetivo justo cuando cruza ese umbral.\n\n"
+            f"Dicho de otro modo: **el β estimado sobre datos reales implica cuánto "
+            f"comercio tiene que estar comprometido** para que la discrepancia observada "
+            f"exista. Eso es un resultado, no un parámetro.")
+
+    st.divider()
+    seccion("Qué deja cada maniobra en los libros")
+    with st.container(border=True):
+        limpias = df[~df["maniobra_activa"]]
+        esp_m = lambda s: s["sector"].map(lambda x: cals[x].margen_operativo)   # noqa: E731
+        esp_s = lambda s: s["sector"].map(lambda x: cals[x].participacion_salarial)  # noqa: E731
+
+        def perfil(s, etiqueta):
+            return {"tipología": etiqueta, "firmas": s["firma"].nunique(),
+                    "margen op.": ((s["resultado_operativo"] / s["ingresos"]) / esp_m(s)).median(),
+                    "nómina": ((s["salarios"] / s["ingresos"]) / esp_s(s)).median(),
+                    "caja / ingresos": (s["caja"] / s["ingresos"]).median(),
+                    "import / costos": (s["importaciones"] / s["otros_costos"]).median()}
+
+        filas = [perfil(limpias, "(sin maniobra)")]
+        for tip in sorted(set(df["tipologia"]) - {"limpia"}):
+            s = df[(df["tipologia"] == tip) & df["maniobra_activa"]]
+            if not s.empty:
+                filas.append(perfil(s, tip))
+        tabla = pd.DataFrame(filas).set_index("tipología")
+        st.dataframe(tabla.style.format({"margen op.": "{:.2f}", "nómina": "{:.2f}",
+                                         "caja / ingresos": "{:.3f}",
+                                         "import / costos": "{:.3f}"}), **ANCHO)
+        st.caption(
+            "**Margen y nómina van normalizados por el sector de cada firma**: 1,00 es "
+            "«igual a lo normal de su actividad». Sin esa normalización se compara "
+            "Enseñanza (94% de nómina) contra Minas (29%) y no la maniobra. La "
+            "estructura sectorial sale de la Cuenta de Generación del Ingreso del INDEC.")
+
+    c5, c6 = st.columns(2)
+    with c5, st.container(border=True):
+        st.subheader("Ninguna se identifica con una sola razón")
+        st.markdown(
+            "La **pantalla** es la más visible: factura sin nómina ni activo fijo.\n\n"
+            "La **sobrefacturación** sólo se separa mirando cuánto importa respecto de "
+            "sus pares; su margen comprimido no alcanza.\n\n"
+            "La **subfacturación** comprime el margen, pero eso lo comparte con "
+            "cualquier empresa que simplemente gana poco. El estado contable la "
+            "**señala y no la identifica**: lo que la identifica es comparar contra lo "
+            "que declara la contraparte — que es exactamente lo que hace el módulo de "
+            "comercio espejo en agregado.")
+    with c6, st.container(border=True):
+        st.subheader("El puente con el resultado macro")
+        st.markdown(
+            f"La intensidad de la subfacturación se calibra para que la discrepancia "
+            f"agregada reproduzca **β = {fs.BETA_EXPORTADOR:+.4f}** por punto de brecha, "
+            f"que es lo que la plataforma estimó sobre datos reales.\n\n"
+            "**La sobrefacturación no escala con la brecha, y eso es el hallazgo**, no "
+            "una omisión: el contraste macro da β = +0,009 con p = 0,68, un cero limpio. "
+            "Sobrefacturar exige acceso al dólar oficial, que es lo que el cepo raciona; "
+            "subfacturar no exige permiso de nadie.")
+        st.caption("Mové la brecha y mirá la métrica de discrepancia de arriba: sigue al "
+                   "objetivo. La intensidad de la sobrefacturación no se mueve.")
+
+    st.divider()
+    seccion("El panel")
+    with st.container(border=True):
+        cols = ["firma", "sector", "ejercicio", "tipologia", "maniobra_activa",
+                "ingresos", "salarios", "resultado_operativo", "activo",
+                "pasivo", "patrimonio", "exportaciones", "importaciones"]
+        solo = st.checkbox("Mostrar solo las firmas con maniobra", value=False)
+        vista = df[df["tipologia"] != "limpia"] if solo else df
+        st.dataframe(vista[cols].head(300), **ANCHO, hide_index=True)
+        st.caption(f"{len(df):,} filas · {df['firma'].nunique():,} firmas · "
+                   f"{df['sector'].nunique()} sectores · semilla {int(semilla)}. "
+                   "Se muestran las primeras 300.")
+
+    st.warning(
+        "**Lo que este dataset NO prueba.** Un detector entrenado acá encuentra las "
+        "maniobras que uno mismo inyectó: no dice nada sobre el lavado real. Sirve para "
+        "comparar métodos entre sí, para medir potencia —cuán chica puede ser una "
+        "maniobra y todavía detectarse— y para desarrollar el pipeline. No como "
+        "evidencia sobre la economía argentina.")
+
+
+# ---------------------------------------------------------------------------
 # Navegación
 # ---------------------------------------------------------------------------
 st.sidebar.markdown("# 📊 Plataforma Económica")
@@ -1746,7 +1901,7 @@ st.sidebar.caption("Monitoreo · Análisis · Econometría")
 st.sidebar.divider()
 pagina = st.sidebar.radio(
     "Navegación", ["🏠  Cockpit", "🔎  Explorador", "🏛  Gobiernos", "🧮  Econometría",
-                   "🌐  Comercio espejo"],
+                   "🌐  Comercio espejo", "🧪  Firmas sintéticas"],
     label_visibility="collapsed")
 st.sidebar.divider()
 st.sidebar.caption(f"📅 Datos hasta {_fecha_datos()}")
@@ -1765,5 +1920,7 @@ elif "Gobiernos" in pagina:
     pagina_gobiernos()
 elif "Econometría" in pagina:
     pagina_econometria()
-else:
+elif "espejo" in pagina:
     pagina_espejo()
+else:
+    pagina_firmas()

@@ -1,0 +1,134 @@
+{
+  "fuente": "INDEC · Cuenta de generación del ingreso (datos.gob.ar, dataset 323.1)",
+  "nota": "Margen operativo y participación salarial NO suman 100%: el VAB también incluye ingreso mixto e impuestos netos de subsidios, que pueden ser negativos.",
+  "ultimo_dato": "2026-01-01",
+  "trimestres_promediados": 8,
+  "sectores": {
+    "A - Agricultura, ganaderia, caza y silvicultura": {
+      "margen_operativo": 0.6296,
+      "participacion_salarial": 0.2208,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_A_AGRICULT_PB__48",
+        "Excedente de explotacion bruto": "323.1_A_AGRICULTUTO__53",
+        "Remuneracion al trabajo asalariado": "323.1_A_AGRICULTADO__50"
+      }
+    },
+    "B - Pesca": {
+      "margen_operativo": 0.5161,
+      "participacion_salarial": 0.4412,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_B_PESCA_VA_PB__14",
+        "Excedente de explotacion bruto": "323.1_B_PESCA_EXUTO__35",
+        "Remuneracion al trabajo asalariado": "323.1_B_PESCA_READO__39"
+      }
+    },
+    "C -Explotacion de minas y canteras": {
+      "margen_operativo": 0.7133,
+      "participacion_salarial": 0.2918,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_C_EXPLOTAC_PB__35",
+        "Excedente de explotacion bruto": "323.1_C_EXPLOTACUTO__56",
+        "Remuneracion al trabajo asalariado": "323.1_C_EXPLOTACADO__60"
+      }
+    },
+    "D - Industria manufacturera": {
+      "margen_operativo": 0.3989,
+      "participacion_salarial": 0.387,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_D_INDUSTRI_PB__32",
+        "Excedente de explotacion bruto": "323.1_D_INDUSTRIUTO__53",
+        "Remuneracion al trabajo asalariado": "323.1_D_INDUSTRIADO__57"
+      }
+    },
+    "E - Electricidad, gas y agua": {
+      "margen_operativo": 0.9193,
+      "participacion_salarial": 0.4188,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_E_ELECTRIC_PB__30",
+        "Excedente de explotacion bruto": "323.1_E_ELECTRICUTO__51",
+        "Remuneracion al trabajo asalariado": "323.1_E_ELECTRICADO__55"
+      }
+    },
+    "F -Construccion": {
+      "margen_operativo": 0.2591,
+      "participacion_salarial": 0.4296,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_F_CONSTRUC_PB__21",
+        "Excedente de explotacion bruto": "323.1_F_CONSTRUCUTO__42",
+        "Remuneracion al trabajo asalariado": "323.1_F_CONSTRUCADO__46"
+      }
+    },
+    "G - Comercio": {
+      "margen_operativo": 0.3958,
+      "participacion_salarial": 0.3116,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_G_COMERCIO_PB__17",
+        "Excedente de explotacion bruto": "323.1_G_COMERCIOUTO__38",
+        "Remuneracion al trabajo asalariado": "323.1_G_COMERCIOADO__42"
+      }
+    },
+    "H - Hoteles y restaurantes": {
+      "margen_operativo": 0.4193,
+      "participacion_salarial": 0.2986,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_H_HOTELES_PB__29",
+        "Excedente de explotacion bruto": "323.1_H_HOTELES_UTO__50",
+        "Remuneracion al trabajo asalariado": "323.1_H_HOTELES_ADO__54"
+      }
+    },
+    "I -Transporte, almacenamiento y comunicaciones": {
+      "margen_operativo": 0.4082,
+      "participacion_salarial": 0.5901,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_I_TRANSPOR_PB__49",
+        "Excedente de explotacion bruto": "323.1_I_TRANSPORUTO__70",
+        "Remuneracion al trabajo asalariado": "323.1_I_TRANSPORADO__74"
+      }
+    },
+    "J -Intermediacion financiera": {
+      "margen_operativo": 0.5549,
+      "participacion_salarial": 0.4222,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_J_INTERMED_PB__34",
+        "Excedente de explotacion bruto": "323.1_J_INTERMEDUTO__55",
+        "Remuneracion al trabajo asalariado": "323.1_J_INTERMEDADO__59"
+      }
+    },
+    "K - Actividades inmobiliarias, empresariales y de alquiler": {
+      "margen_operativo": 0.5862,
+      "participacion_salarial": 0.2946,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_K_ACT_INMO_PB__49",
+        "Excedente de explotacion bruto": "323.1_K_ACT_INMOUTO__70",
+        "Remuneracion al trabajo asalariado": "323.1_K_ACT_INMOADO__74"
+      }
+    },
+    "M -Enseñanza": {
+      "margen_operativo": 0.1352,
+      "participacion_salarial": 0.9361,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_M_ENSENIAN_PB__19",
+        "Excedente de explotacion bruto": "323.1_M_ENSENIANUTO__40",
+        "Remuneracion al trabajo asalariado": "323.1_M_ENSENIANADO__44"
+      }
+    },
+    "N -Servicios sociales y de salud": {
+      "margen_operativo": 0.3212,
+      "participacion_salarial": 0.5723,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_N_SERVICIO_PB__33",
+        "Excedente de explotacion bruto": "323.1_N_SERVICIOUTO__54",
+        "Remuneracion al trabajo asalariado": "323.1_N_SERVICIOADO__58"
+      }
+    },
+    "O -Otras actividades de servicios comunitarias, sociales y personales": {
+      "margen_operativo": 0.2235,
+      "participacion_salarial": 0.6291,
+      "series": {
+        "Valor Agregado Bruto pb": "323.1_O_OTRAS_AC_PB__56",
+        "Excedente de explotacion bruto": "323.1_O_OTRAS_ACUTO__54",
+        "Remuneracion al trabajo asalariado": "323.1_O_OTRAS_ACADO__58"
+      }
+    }
+  }
+}

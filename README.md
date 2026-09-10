@@ -48,7 +48,7 @@ traslado a precios → actividad y empleo), con módulo de econometría aplicada
 
 ```
 platec/     núcleo analítico (data, stats, econometria, nowcast, insights, gobiernos,
-            narrador, comercio_espejo)
+            narrador, comercio_espejo, firmas_sinteticas)
 dashboard/  app Streamlit (app.py) + bootstrap de datos
 scripts/    utilidades ejecutables (validate_sources, init_db, ingest, snapshot, analisis)
 sql/        DDL del esquema (schema.sql)
@@ -64,7 +64,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (201 casos)
+python3 -m pytest                        # suite de tests (235 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -241,6 +241,38 @@ panel de lectura automática determinístico. Detalle completo en
 ```bash
 export ANTHROPIC_API_KEY="..."   # local; en Streamlit Cloud va como secret del deploy
 ```
+
+### El único dato que la plataforma sí inventa, y cómo se lo aísla
+`platec/firmas_sinteticas.py` genera estados contables de empresas **ficticias** con etiqueta
+de verdad sobre qué maniobra ejecuta cada una — infraestructura de investigación, porque los
+reportes de operación sospechosa son confidenciales por ley y no hay datos etiquetados
+públicos.
+
+Choca de frente con la regla que atraviesa el proyecto, así que se lo aísla por construcción:
+**no persiste nada**. Se genera determinísticamente desde una semilla, así que la
+reproducibilidad se consigue guardando un entero y ninguna fila sintética puede terminar al
+lado de un dato real. Hay un test que verifica que el módulo no escribe en disco. En el
+dashboard vive en una página aparte con el aviso arriba de todo.
+
+Lo que lo hace no-trivial: **articulación contable**, **ley de Benford** (los montos salen de
+una lognormal; con `uniform()` el problema se resuelve solo, porque la desviación de Benford
+ya es un detector forense), **estructura sectorial real** del INDEC, **prevalencia baja** y
+—lo que costó una versión entera— **la maniobra va a quien puede hacerla**: repartidas al
+azar, la sobrefacturación quedaba diluida en firmas que apenas importaban y movía el margen
+de 0,96 a 0,95.
+
+**El puente con el macro.** La intensidad de la subfacturación se calibra para que la
+discrepancia agregada reproduzca el β = +0,0589 estimado sobre datos reales. La
+sobrefacturación **no** escala con la brecha, y eso es el hallazgo: β = +0,009 con p = 0,68,
+porque exige acceso al dólar oficial que el cepo raciona.
+
+Perseguir esa calibración destapó una implicancia: si se omite el 5,9% de las exportaciones y
+ninguna firma omite más del 60% de las suyas, **al menos el 9,8% del valor exportado pasa por
+manipuladores**. El umbral empírico coincide con el aritmético. Detalle en
+[`docs/firmas_sinteticas.md`](docs/firmas_sinteticas.md).
+
+> Un detector entrenado ahí encuentra las maniobras que uno mismo inyectó: sirve para comparar
+> métodos y medir potencia, **no** como evidencia sobre la economía argentina.
 
 ### Bitácora de investigación
 [`docs/notas/`](docs/notas/) es la capa que `docs/` no cubre: `docs/` documenta **lo que el
