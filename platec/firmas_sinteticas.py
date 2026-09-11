@@ -211,10 +211,13 @@ def _ejercicio(rng, cal: Calibracion, ingresos: float, tipologia: str,
     activo_fijo = ingresos * float(rng.uniform(0.25, 0.75))
     caja = ingresos * float(rng.uniform(0.03, 0.12))
     creditos = ingresos * float(rng.uniform(0.10, 0.30))
-    # La exposición al comercio exterior viene de afuera: es un rasgo de la FIRMA,
-    # constante entre ejercicios, no un sorteo por año.
-    exportaciones = ingresos * perfil["exportador"]
-    importaciones = otros_costos * perfil["importador"]
+    # La exposición al comercio exterior es un rasgo de la FIRMA, pero NO es idéntica
+    # todos los años: un exportador real tiene una participación que fluctúa con sus
+    # contratos. Sin ese ruido, el desvío entre ejercicios era exactamente cero para
+    # toda firma limpia y se volvía el mejor predictor del panel — otra vez, un
+    # detector aprendiendo el generador y no la maniobra.
+    exportaciones = ingresos * perfil["exportador"] * max(float(rng.normal(1.0, 0.18)), 0.05)
+    importaciones = otros_costos * perfil["importador"] * max(float(rng.normal(1.0, 0.18)), 0.05)
 
     # --- la maniobra -----------------------------------------------------
     desvio = 0.0
@@ -317,18 +320,33 @@ def _perfiles(rng, n_firmas: int, prevalencia: float) -> list[dict]:
     sobrefacturación movía el margen de 0,96 a 0,95 y no significaba nada.
     """
     sospechosas = sorted(TIPOLOGIAS.keys() - {"limpia"})
+    if prevalencia > 0 and not sospechosas:
+        raise ValueError("no hay tipologías sospechosas: TIPOLOGIAS sólo trae «limpia»")
     marcadas = set(rng.choice(n_firmas, size=int(round(n_firmas * prevalencia)),
                               replace=False).tolist())
     perfiles = []
     for i in range(n_firmas):
         tip = sospechosas[int(rng.integers(len(sospechosas)))] if i in marcadas else "limpia"
-        # Exposición comercial: alta si la maniobra la necesita, normal si no.
-        exportador = (float(rng.uniform(0.45, 0.85))
-                      if tip == "subfacturacion_exportaciones"
-                      else float(rng.uniform(0.0, 0.35)))
-        importador = (float(rng.uniform(0.55, 0.90))
-                      if tip == "sobrefacturacion_importaciones"
-                      else float(rng.uniform(0.0, 0.40)))
+        # EXPOSICIÓN COMERCIAL: LOS SOPORTES TIENEN QUE SOLAPARSE.
+        #
+        # La maniobra va a quien puede hacerla, pero eso no significa que quien puede
+        # hacerla la haga. La primera versión sorteaba la intensidad exportadora de
+        # las limpias en [0,00 - 0,35] y la de las subfacturadoras en [0,45 - 0,85]:
+        # soportes DISJUNTOS, así que "exportador > 0,40" las identificaba perfecto.
+        # Un detector entrenado sobre eso aprendía a reconocer el sorteo, no la
+        # maniobra — y lo delató al dar PR-AUC 0,89 con prevalencia 2%, que para un
+        # problema de AML es demasiado bueno para ser cierto.
+        #
+        # Ahora una parte de las firmas son comerciantes, limpias o no, y las
+        # manipuladoras salen de esa MISMA población. Comerciar mucho es informativo
+        # —la maniobra lo exige— pero no determinante, que es el caso real.
+        def _intensidad_comercial(obliga: bool) -> float:
+            if obliga or rng.random() < 0.35:
+                return float(rng.uniform(0.30, 0.85))      # firma comerciante
+            return float(rng.uniform(0.0, 0.25))           # comercia poco o nada
+
+        exportador = _intensidad_comercial(tip == "subfacturacion_exportaciones")
+        importador = _intensidad_comercial(tip == "sobrefacturacion_importaciones")
         perfiles.append({
             "tipologia": tip, "exportador": exportador, "importador": importador,
             "escala": float(_lognormal(rng, mediana=800e6, sigma=1.4)[0]),

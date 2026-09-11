@@ -1771,8 +1771,8 @@ def pagina_firmas():
 
     c1, c2, c3, c4 = st.columns(4)
     n = c1.select_slider("Firmas", [200, 500, 1000, 2000], value=500)
-    prevalencia = c2.select_slider("Prevalencia", [0.01, 0.02, 0.05, 0.20, 0.40], value=0.02,
-                                   format_func=lambda v: f"{v:.0%}")
+    prevalencia = c2.select_slider("Prevalencia", [0.01, 0.02, 0.05, 0.20, 0.40, 0.65],
+                                   value=0.02, format_func=lambda v: f"{v:.0%}")
     brecha = c3.select_slider("Brecha cambiaria", [0, 25, 50, 100, 150], value=100,
                               format_func=lambda v: f"{v}%")
     semilla = c4.number_input("Semilla", min_value=0, max_value=9999, value=7, step=1)

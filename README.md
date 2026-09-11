@@ -64,7 +64,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (242 casos)
+python3 -m pytest                        # suite de tests (256 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -283,6 +283,20 @@ Perseguir esa calibración destapó una implicancia: si se omite el 5,9% de las 
 ninguna firma omite más del 60% de las suyas, **al menos el 9,8% del valor exportado pasa por
 manipuladores**. El umbral empírico coincide con el aritmético. Detalle en
 [`docs/firmas_sinteticas.md`](docs/firmas_sinteticas.md).
+
+**El detector encontró una fuga en el generador.** `platec/deteccion.py` dio PR-AUC 0,89 con
+prevalencia 2% — demasiado bueno para un problema de AML. La causa: la intensidad exportadora
+de las limpias se sorteaba en [0,00 – 0,35] y la de las manipuladoras en [0,45 – 0,85],
+soportes **disjuntos**. El clasificador aprendía el sorteo, no la maniobra. Con los soportes
+solapados bajó a 0,785. *Un detector que anda demasiado bien es un diagnóstico sobre el
+dataset, no un logro* — y hay un test que falla si una sola característica se lleva más del
+95% de la señal.
+
+Recall por tipología a prevalencia 2%: efectivo y reactivada 100%, pantalla 93%, fachada 80%,
+compras 75%, subfacturación 65%, y **sobrefacturación de importaciones 0%**. Ese cero es un
+resultado: aislada da PR-AUC 0,101 contra azar 0,030, porque su diferencia de margen vale
+**0,06 desvíos** de la dispersión natural de rentabilidad entre empresas. Confirma lo que el
+indicador de GAFI sugería — *«unreasonably low profit margins»* es una señal real y confundida.
 
 > Un detector entrenado ahí encuentra las maniobras que uno mismo inyectó: sirve para comparar
 > métodos y medir potencia, **no** como evidencia sobre la economía argentina.

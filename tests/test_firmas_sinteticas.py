@@ -194,11 +194,14 @@ def test_la_brecha_calibra_la_discrepancia_contra_el_beta_estimado():
     sobre datos reales: +0,0589 puntos de discrepancia por punto de brecha. Es lo
     que convierte al generador en un puente micro-macro y no en un simulador suelto.
     """
-    # La prevalencia tiene que estar por encima del umbral de factibilidad: con
-    # pocas firmas subfacturadoras ninguna intensidad admisible alcanza el objetivo.
+    # La prevalencia tiene que estar por encima del umbral de factibilidad. Ese umbral
+    # subió al solapar los soportes de intensidad comercial: ahora las firmas limpias
+    # también exportan, así que hacen falta más manipuladoras para alcanzar la misma
+    # participación en el valor exportado. El share mínimo no cambió; sí cuántas firmas
+    # hacen falta para llegar a él.
     for brecha in (25.0, 50.0, 100.0):
         d = fs.generar(n_firmas=1500, ejercicios=3, semilla=5,
-                       prevalencia=0.45, brecha=brecha)
+                       prevalencia=0.65, brecha=brecha)
         objetivo = fs.BETA_EXPORTADOR * brecha / 100
         assert d.attrs["calibrado"], f"no factible a brecha {brecha}"
         assert fs.discrepancia_exportadora(d) == pytest.approx(objetivo, rel=0.15)
@@ -355,7 +358,7 @@ def test_la_calibracion_avisa_cuando_no_es_factible():
 
 
 def test_con_prevalencia_suficiente_la_calibracion_se_logra():
-    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.45, brecha=100.0)
+    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.65, brecha=100.0)
     assert d.attrs["calibrado"] is True
     assert d.attrs["discrepancia_lograda"] == pytest.approx(
         d.attrs["objetivo_discrepancia"], rel=0.15)
@@ -379,7 +382,7 @@ def test_el_umbral_teorico_coincide_con_el_empirico():
     es lo que hace creíble a las dos.
     """
     minimo = fs.share_exportador_minimo(100.0)
-    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.40, brecha=100.0)
+    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.65, brecha=100.0)
     sub = d[d["tipologia"] == "subfacturacion_exportaciones"]
     share = sub["exportaciones"].sum() / d["exportaciones"].sum()
     assert share >= minimo * 0.95 and d.attrs["calibrado"]

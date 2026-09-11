@@ -158,7 +158,77 @@ versión lo tapaba topeando la intensidad en silencio, lo que además producía 
 operativo **negativo**: un estado contable absurdo que habría delatado la maniobra por la vía
 equivocada.
 
-## 7. Lo que este dataset no prueba
+## 7. El detector, y lo que encontró
+
+`platec/deteccion.py` arma las características observables de cada firma —razones de un
+balance y un estado de resultados, normalizadas por sector— y evalúa un clasificador con
+validación cruzada. La unidad es la **firma**, no el ejercicio: se investiga una empresa, no
+su año fiscal 2022, y evaluar por ejercicio filtraría porque los otros años de la misma firma
+estarían en el entrenamiento.
+
+**No se reporta exactitud.** Con prevalencia del 2%, predecir «todas limpias» acierta el 98%.
+Se reportan PR-AUC (cuyo piso de azar es la prevalencia, no 0,5), precisión@k —un equipo
+investiga k casos y lo que importa es cuántos eran de verdad— y ROC-AUC con la advertencia de
+que **bajo desbalance extremo exagera**: se apoya en la tasa de falsos positivos, y con 98% de
+negativos esa tasa se mueve poco aunque las alertas sean mayoritariamente falsas.
+
+| Prevalencia | PR-AUC | ROC-AUC | Precisión@k | Azar |
+|---|---|---|---|---|
+| 20% | 0,919 | 0,955 | 83,6% | 0,200 |
+| 5% | 0,833 | 0,937 | 78,0% | 0,050 |
+| 2% | 0,785 | 0,930 | 77,5% | 0,020 |
+| 1% | 0,511 | 0,868 | 52,5% | 0,010 |
+
+### La fuga que destapó
+
+La primera corrida dio **PR-AUC 0,89 con prevalencia 2%**, que para un problema de AML es
+demasiado bueno para ser cierto. La causa estaba en el generador:
+
+1. **Soportes disjuntos.** La intensidad exportadora de las limpias se sorteaba en
+   [0,00 – 0,35] y la de las subfacturadoras en [0,45 – 0,85]. Cero solapamiento:
+   `exportador > 0,40` las identificaba perfecto. El clasificador aprendía a reconocer el
+   sorteo, no la maniobra.
+2. **Variación nula entre ejercicios.** La intensidad comercial era idéntica todos los años,
+   así que su desvío era exactamente cero para toda firma limpia y se volvía el mejor
+   predictor del panel.
+
+Corregido: ahora una parte de las firmas son comerciantes —limpias o no— y las manipuladoras
+salen de esa misma población, con ruido año a año. Comerciar mucho es informativo, no
+determinante. El PR-AUC bajó a 0,785.
+
+> **Un detector que anda demasiado bien es un diagnóstico sobre el dataset, no un logro.** Hay
+> un test que falla si una sola característica se lleva más del 95% de la importancia.
+
+### Qué maniobra se ve y cuál no
+
+Recall a prevalencia 2%, con presupuesto igual al número de manipuladoras:
+
+| Tipología | Recall |
+|---|---|
+| efectivo | 100% |
+| nueva / reactivada | 100% |
+| pantalla | 93% |
+| fachada | 80% |
+| compras desproporcionadas | 75% |
+| subfacturación exportaciones | 65% |
+| **sobrefacturación importaciones** | **0%** |
+
+**El cero no es un bug.** Aislada en su propio panel, la sobrefacturación da PR-AUC 0,101
+contra un azar de 0,030: detectable, pero apenas. El número que lo explica es que **la
+diferencia de margen contra las limpias vale 0,06 desvíos** de la dispersión natural de
+rentabilidad entre empresas. Un margen comprimido lo comparte con cualquier empresa que
+simplemente gana poco, y su intensidad importadora la comparte con los importadores legítimos.
+En un panel con todas las tipologías y presupuesto acotado, el detector gasta las alertas en
+las que sí se ven y nunca llega a estas.
+
+Es la confirmación cuantitativa de lo que el indicador de GAFI ya sugería: *«consistently
+displays unreasonably low profit margins»* es una señal real y **confundida**.
+
+> Y el contrapunto: un panel con **sólo** empresas pantalla da **PR-AUC 1,000**. Cualquier
+> detector evaluado ahí queda sobreestimado. Es exactamente la razón de haber agregado la
+> fachada.
+
+## 8. Lo que este dataset no prueba
 
 Un detector entrenado acá encuentra las maniobras que uno mismo inyectó. **No dice nada sobre
 el lavado real.** Sirve para:
