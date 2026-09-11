@@ -61,22 +61,31 @@ Cuatro cosas, y las cuatro se rompen en los generadores ingenuos:
 
 QUÉ DEJA CADA MANIOBRA EN LOS LIBROS
 ------------------------------------
-Medido sobre el panel, normalizado por la estructura de cada sector (1,00 = igual a
-lo normal de su actividad):
+Normalizado por la estructura de cada sector (1,00 = igual a lo normal de su
+actividad). «Crec. máx.» es el mayor salto interanual de facturación de la firma.
 
-    tipología                        margen op.   nómina    caja   import/costos
-    (limpias)                              0,95     1,01   0,076           0,220
-    sobrefacturacion_importaciones         0,89     1,01   0,073           0,725
-    subfacturacion_exportaciones           0,63     1,19   0,087           0,193
-    pantalla                               1,76     0,06   0,069           0,228
-    efectivo                               1,23     0,77   0,311           0,205
+    tipología                     margen  nómina  ing/AF  pas/pat   caja   crec
+    (sin maniobra)                  0,96    1,00    2,03     1,11  0,075    17%
+    pantalla                        1,78    0,07   43,86     1,10  0,075    18%
+    fachada                         1,36    0,68    2,88     0,96  0,051    56%
+    efectivo                        1,24    0,76    2,68     1,13  0,277    37%
+    subfacturacion_exportaciones    0,68    1,18    1,74     1,23  0,091    17%
+    sobrefacturacion_importaciones  0,90    1,00    1,90     1,09  0,071    18%
+    compras_desproporcionadas       0,95    1,00    0,70     8,12  0,073    19%
+    nueva_alto_volumen              0,95    1,03    1,93     1,28  0,074  1.749%
 
-Ninguna se identifica con una sola razón. La pantalla es la más visible —factura sin
-nómina ni activo fijo—; la sobrefacturación sólo se separa mirando cuánto importa
-respecto de sus pares; y la subfacturación comprime el margen, pero eso lo comparte
-con cualquier empresa que simplemente gana poco. Por eso el estado contable la
-SEÑALA y no la identifica: lo que la identifica es comparar contra lo que declara la
-contraparte, que es lo que hace `comercio_espejo` en agregado.
+Ninguna se identifica con una sola razón, y dos son deliberadamente difíciles:
+
+- La **fachada** conserva su nómina y su planta porque son reales. No hay anomalía
+  estructural que buscar: sólo factura más de lo que esa capacidad explica. Un
+  dataset con sólo pantallas sobreestima cualquier detector.
+- La **entidad reactivada** es indistinguible en corte transversal. Su anomalía es
+  la TRAYECTORIA, y eso obliga a usar la historia de la firma y no una foto.
+
+La subfacturación comprime el margen, pero eso lo comparte con cualquier empresa que
+simplemente gana poco: el estado contable la SEÑALA y no la identifica. Lo que la
+identifica es comparar contra lo que declara la contraparte, que es lo que hace
+`comercio_espejo` en agregado.
 
 SUPUESTO QUE CONVIENE TENER PRESENTE. La subfacturación omite ingresos y deja los
 costos en los libros, y por eso comprime el margen. Una firma que además maneje los
@@ -94,25 +103,67 @@ import pandas as pd
 
 RATIOS = Path(__file__).resolve().parent.parent / "data" / "ratios_sectoriales.json"
 
-# Tipologías modeladas, con la etiqueta que viaja en el dataset.
-#
+@dataclass(frozen=True)
+class Tipologia:
+    """
+    Una maniobra modelada, con el indicador de GAFI que la respalda.
+
+    La cita no es decorativa: ata cada tipología a un indicador publicado en
+    «Trade-Based Money Laundering: Risk Indicators» (GAFI/Egmont, marzo 2021) o a la
+    taxonomía regional de GAFILAT, en vez de a la intuición de quien escribió el
+    generador. Si una tipología no puede citar nada, probablemente no exista.
+    """
+    descripcion: str
+    fuente: str
+
+
 # `limpia` no es una etiqueta más: es la clase mayoritaria. En AML la prevalencia
-# real está en el orden de 1 en 1.000, y un dataset balanceado convierte un
-# problema de detección en uno de clasificación fácil. El default respeta eso.
+# real está en el orden de 1 en 1.000, y un dataset balanceado convierte un problema
+# de detección en uno de clasificación fácil. El default respeta eso.
+#
+# SOBRE LA COBERTURA. De los 35 indicadores de GAFI, sólo unos siete son observables
+# en un estado contable anual: el 80% son de documentos aduaneros y de movimientos de
+# cuenta, que un balance no contiene. Lo que se modela acá es esa minoría, y esa
+# limitación es del objeto, no del generador.
 TIPOLOGIAS = {
-    "limpia": "Firma sin maniobra.",
-    "subfacturacion_exportaciones": (
+    "limpia": Tipologia("Firma sin maniobra.", "—"),
+    "subfacturacion_exportaciones": Tipologia(
         "Declara exportaciones por debajo de lo embarcado; la diferencia queda "
-        "afuera. Es la maniobra que el módulo de comercio espejo mide en agregado."),
-    "sobrefacturacion_importaciones": (
+        "afuera. Es la maniobra que el módulo de comercio espejo mide en agregado.",
+        "GAFI/Egmont 2021, documentos: precios fuera de consideraciones comerciales"),
+    "sobrefacturacion_importaciones": Tipologia(
         "Declara importaciones por encima de lo recibido para girar divisas al "
-        "oficial. Exige acceso al mercado oficial de cambios."),
-    "pantalla": (
+        "oficial. Exige acceso al mercado oficial de cambios.",
+        "GAFI/Egmont 2021, actividad: «consistently displays unreasonably low profit "
+        "margins… importing wholesale commodities at or above retail value»"),
+    "pantalla": Tipologia(
         "Factura sin huella operativa: ingresos altos, nómina y activo fijo casi "
-        "nulos para su sector."),
-    "efectivo": (
+        "nulos para su sector.",
+        "GAFI/Egmont 2021, estructural: «lacks regular payroll transactions in line "
+        "with the number of stated employees» y «maintains a minimal number of "
+        "working staff, inconsistent with its volume of traded commodities»"),
+    "efectivo": Tipologia(
         "Negocio intensivo en efectivo que sobredeclara ventas para dar origen a "
-        "fondos: caja desalineada de su sector."),
+        "fondos: caja desalineada de su sector.",
+        "GAFILAT 2009-2016 §56, comercios pantalla para colocación de capital ilícito"),
+    "fachada": Tipologia(
+        "Operación REAL usada para mezclar. Nómina y activo fijo normales —porque son "
+        "reales— pero facturación por encima de lo que esa capacidad instalada "
+        "explica. Es la variante difícil: no tiene anomalía estructural que buscar.",
+        "GAFILAT 2009-2016 §V, vehículos corporativos (§54, §64, §65, §69: empresa "
+        "fachada)"),
+    "compras_desproporcionadas": Tipologia(
+        "Compra activos muy por encima de lo que su operación puede sostener, "
+        "financiándose con deuda que el resultado no alcanza a servir.",
+        "GAFI/Egmont 2021, actividad: «purchases commodities, allegedly on its own "
+        "account, but the purchases clearly exceed the economic capabilities of the "
+        "entity»"),
+    "nueva_alto_volumen": Tipologia(
+        "Entidad recién formada o reactivada tras un período de latencia que salta de "
+        "golpe a un volumen alto, sin la trayectoria que eso supondría.",
+        "GAFI/Egmont 2021, actividad: «A newly formed or recently re-activated trade "
+        "entity engages in high-volume and high-value trade activity»; estructural: "
+        "«unexplained periods of dormancy»"),
 }
 
 
@@ -191,6 +242,22 @@ def _ejercicio(rng, cal: Calibracion, ingresos: float, tipologia: str,
         ingresos *= (1 + infl)
         caja *= float(rng.uniform(3.0, 8.0))
         desvio = infl
+    elif tipologia == "fachada":
+        # LA VARIANTE DIFÍCIL. La operación es real, así que la nómina y el activo
+        # fijo NO se tocan: ya quedaron calculados sobre el ingreso genuino. Sólo se
+        # infla la facturación. El resultado es una firma sin ninguna anomalía
+        # estructural —tiene empleados, tiene planta— que factura más de lo que esa
+        # capacidad instalada explica, y cuyo margen mejora porque el dinero inyectado
+        # no tiene costo. Es lo contrario de la pantalla: allá falta el cuerpo, acá
+        # sobra la facturación.
+        desvio = perfil["intensidad"] * 2
+        ingresos *= (1 + desvio)
+    elif tipologia == "compras_desproporcionadas":
+        # Compra por encima de lo que su operación sostiene. El activo fijo se dispara
+        # y lo financia deuda, no resultados: el patrimonio queda chico contra un
+        # activo grande y el resultado operativo no alcanza a servir el pasivo.
+        desvio = perfil["intensidad"]
+        activo_fijo *= (1 + desvio * 8)
 
     # --- resultados ------------------------------------------------------
     resultado_operativo = ingresos - salarios - otros_costos
@@ -202,7 +269,11 @@ def _ejercicio(rng, cal: Calibracion, ingresos: float, tipologia: str,
     # patrimonio a partir del resultado, y lo que falta para cerrar es deuda. Así
     # la identidad se cumple exactamente y no por un ajuste ad hoc al final.
     activo = caja + creditos + activo_fijo
-    patrimonio = activo * float(rng.uniform(0.30, 0.65))
+    if tipologia == "compras_desproporcionadas":
+        # Lo compró con deuda, no con lo que ganó.
+        patrimonio = activo * float(rng.uniform(0.05, 0.18))
+    else:
+        patrimonio = activo * float(rng.uniform(0.30, 0.65))
     pasivo = activo - patrimonio
 
     return {
@@ -262,6 +333,13 @@ def _perfiles(rng, n_firmas: int, prevalencia: float) -> list[dict]:
             "tipologia": tip, "exportador": exportador, "importador": importador,
             "escala": float(_lognormal(rng, mediana=800e6, sigma=1.4)[0]),
             "intensidad": float(rng.uniform(0.10, 0.40)),
+            # Sólo usados por `nueva_alto_volumen`: cuánto opera mientras está latente
+            # y por cuánto multiplica al reactivarse. El cociente entre los dos —entre
+            # 7 y 40 veces— es el salto observable. Con la primera calibración daba
+            # hasta 400 veces, un caso que se detecta a ojo y que por eso no sirve:
+            # un dataset donde la anomalía salta sola no mide ningún detector.
+            "latencia": float(rng.uniform(0.08, 0.25)),
+            "salto": float(rng.uniform(1.8, 3.5)),
         })
 
     return perfiles
@@ -345,12 +423,23 @@ def _construir(perfiles: list[dict], cals: dict, ejercicios: int,
         cal = cals[sectores[int(rng.integers(len(sectores)))]]
         escala = perfil["escala"]
         # La maniobra empieza en un ejercicio, no necesariamente en el primero.
-        desde = (int(rng.integers(0, ejercicios))
-                 if perfil["tipologia"] != "limpia" else ejercicios)
+        if perfil["tipologia"] == "limpia":
+            desde = ejercicios
+        elif perfil["tipologia"] == "nueva_alto_volumen":
+            # Tiene que haber latencia ANTES del salto, o no hay nada que observar.
+            desde = int(rng.integers(1, max(ejercicios, 2)))
+        else:
+            desde = int(rng.integers(0, ejercicios))
         for t in range(ejercicios):
             escala *= float(rng.normal(1.08, 0.12))       # crecimiento nominal
             activa = t >= desde
-            e = _ejercicio(rng, cal, escala,
+            # `nueva_alto_volumen` no deforma un ejercicio sino la TRAYECTORIA: la
+            # firma está casi latente y después salta. Por eso se aplica acá, sobre
+            # la escala, y no en `_ejercicio`, que sólo ve un año por vez.
+            escala_t = escala
+            if perfil["tipologia"] == "nueva_alto_volumen":
+                escala_t *= perfil["salto"] if activa else perfil["latencia"]
+            e = _ejercicio(rng, cal, escala_t,
                            perfil["tipologia"] if activa else "limpia", perfil)
             filas.append({"firma": f"SINT-{i:04d}", "sector": cal.sector,
                           "ejercicio": anio_inicial + t,

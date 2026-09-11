@@ -64,7 +64,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (235 casos)
+python3 -m pytest                        # suite de tests (242 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -260,6 +260,19 @@ ya es un detector forense), **estructura sectorial real** del INDEC, **prevalenc
 —lo que costó una versión entera— **la maniobra va a quien puede hacerla**: repartidas al
 azar, la sobrefacturación quedaba diluida en firmas que apenas importaban y movía el margen
 de 0,96 a 0,95.
+
+**Siete tipologías, cada una citando su indicador** de [GAFI/Egmont
+2021](https://www.fatf-gafi.org/content/dam/fatf-gafi/reports/Trade-Based-Money-Laundering-Risk-Indicators.pdf)
+o de la taxonomía regional de GAFILAT, con test que verifica que ninguna exista sin respaldo.
+Dos son deliberadamente difíciles: la **fachada** conserva nómina y planta porque son reales
+—no hay anomalía estructural que buscar, sólo factura más de lo que esa capacidad explica— y
+la **entidad reactivada** es indistinguible en corte transversal, porque su anomalía está en
+la trayectoria y no en el nivel. Un dataset con sólo empresas pantalla sobreestima cualquier
+detector.
+
+> De los 35 indicadores de GAFI, **sólo unos siete son observables en un estado contable
+> anual**: el 80% son de documentos aduaneros y de movimientos de cuenta, que un balance no
+> contiene. Es una limitación del objeto, no del generador.
 
 **El puente con el macro.** La intensidad de la subfacturación se calibra para que la
 discrepancia agregada reproduzca el β = +0,0589 estimado sobre datos reales. La

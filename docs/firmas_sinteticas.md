@@ -68,27 +68,57 @@ comerciaban.
 
 ## 5. Qué deja cada maniobra en los libros
 
-Normalizado por la estructura de cada sector (1,00 = igual a lo normal de su actividad):
+Normalizado por la estructura de cada sector (1,00 = igual a lo normal de su actividad).
+«Crec. máx.» es el mayor salto interanual de facturación de la firma.
 
-| Tipología | Margen op. | Nómina | Caja/ing. | Import/costos |
-|---|---|---|---|---|
-| (sin maniobra) | 0,95 | 1,01 | 0,076 | 0,220 |
-| sobrefacturación importaciones | 0,89 | 1,01 | 0,073 | **0,725** |
-| subfacturación exportaciones | **0,63** | 1,19 | 0,087 | 0,193 |
-| pantalla | 1,76 | **0,06** | 0,069 | 0,228 |
-| efectivo | 1,23 | 0,77 | **0,311** | 0,205 |
+| Tipología | Margen op. | Nómina | Ing./act. fijo | Pasivo/patr. | Caja/ing. | Crec. máx. |
+|---|---|---|---|---|---|---|
+| (sin maniobra) | 0,96 | 1,00 | 2,03 | 1,11 | 0,075 | 17% |
+| pantalla | 1,78 | **0,07** | **43,86** | 1,10 | 0,075 | 18% |
+| fachada | 1,36 | 0,68 | 2,88 | 0,96 | 0,051 | 56% |
+| efectivo | 1,24 | 0,76 | 2,68 | 1,13 | **0,277** | 37% |
+| subfacturación exportaciones | **0,68** | 1,18 | 1,74 | 1,23 | 0,091 | 17% |
+| sobrefacturación importaciones | 0,90 | 1,00 | 1,90 | 1,09 | 0,071 | 18% |
+| compras desproporcionadas | 0,95 | 1,00 | 0,70 | **8,12** | 0,073 | 19% |
+| nueva / reactivada | 0,95 | 1,03 | 1,93 | 1,28 | 0,074 | **1.749%** |
 
-**Ninguna se identifica con una sola razón.** La pantalla es la más visible: factura sin
-nómina ni activo fijo. La sobrefacturación sólo se separa mirando cuánto importa respecto de
-sus pares — su margen comprimido no alcanza. Y la subfacturación comprime el margen, pero eso
-lo comparte con cualquier empresa que simplemente gana poco: **el estado contable la señala y
-no la identifica**. Lo que la identifica es comparar contra lo que declara la contraparte, que
-es lo que hace [`comercio_espejo`](comercio_espejo.md) en agregado.
+**Ninguna se identifica con una sola razón**, y dos son deliberadamente difíciles:
+
+- La **fachada** conserva nómina y planta porque son reales. No hay anomalía estructural que
+  buscar: sólo factura más de lo que esa capacidad instalada explica, y su margen mejora
+  porque el dinero inyectado no tiene costo. **Un dataset con sólo pantallas sobreestima
+  cualquier detector.**
+- La **entidad nueva o reactivada** es indistinguible en corte transversal — mirá su fila:
+  margen 0,95, nómina 1,03, todo normal. Su anomalía es la **trayectoria**, y eso obliga a un
+  detector a usar la historia de la firma y no una foto.
+
+La **subfacturación** comprime el margen, pero eso lo comparte con cualquier empresa que
+simplemente gana poco: el estado contable la **señala y no la identifica**. Lo que la
+identifica es comparar contra lo que declara la contraparte, que es lo que hace
+[`comercio_espejo`](comercio_espejo.md) en agregado.
 
 > **Supuesto que conviene tener presente.** La subfacturación omite ingresos y deja los costos
 > en los libros, y por eso comprime el margen. Una firma que además maneje los costos
 > correspondientes por fuera mostraría un margen menos comprimido: este canal está modelado en
 > el extremo detectable del rango.
+
+### De dónde sale cada tipología
+
+Cada una cita su indicador en el código (`TIPOLOGIAS[...].fuente`), y hay un test que verifica
+que ninguna maniobra exista sin respaldo:
+
+| Tipología | Fuente |
+|---|---|
+| pantalla | GAFI/Egmont 2021, estructural: *«lacks regular payroll transactions in line with the number of stated employees»* |
+| fachada | GAFILAT 2009-2016 §V, vehículos corporativos (§54, §64, §65, §69) |
+| efectivo | GAFILAT 2009-2016 §56, comercios pantalla para colocación |
+| sobrefacturación | GAFI/Egmont 2021, actividad: *«consistently displays unreasonably low profit margins»* |
+| compras desproporcionadas | GAFI/Egmont 2021, actividad: *«purchases clearly exceed the economic capabilities of the entity»* |
+| nueva / reactivada | GAFI/Egmont 2021: *«newly formed or recently re-activated trade entity engages in high-volume… activity»* + *«unexplained periods of dormancy»* |
+
+**De los 35 indicadores de GAFI, sólo unos siete son observables en un estado contable
+anual**: el 80% son de documentos aduaneros y de movimientos de cuenta, que un balance no
+contiene. Lo que se modela acá es esa minoría, y la limitación es del objeto, no del generador.
 
 ## 6. El puente con el resultado macro
 

@@ -34,7 +34,7 @@ def panel_tipologias():
     parámetro del generador, no una propiedad del fenómeno: para caracterizar una
     maniobra hace falta señal, para evaluar un detector hace falta realismo.
     """
-    return fs.generar(n_firmas=900, ejercicios=4, semilla=13, prevalencia=0.40)
+    return fs.generar(n_firmas=1400, ejercicios=4, semilla=13, prevalencia=0.42)
 
 
 def _normalizado(d: pd.DataFrame, cals) -> pd.Series:
@@ -198,7 +198,7 @@ def test_la_brecha_calibra_la_discrepancia_contra_el_beta_estimado():
     # pocas firmas subfacturadoras ninguna intensidad admisible alcanza el objetivo.
     for brecha in (25.0, 50.0, 100.0):
         d = fs.generar(n_firmas=1500, ejercicios=3, semilla=5,
-                       prevalencia=0.30, brecha=brecha)
+                       prevalencia=0.45, brecha=brecha)
         objetivo = fs.BETA_EXPORTADOR * brecha / 100
         assert d.attrs["calibrado"], f"no factible a brecha {brecha}"
         assert fs.discrepancia_exportadora(d) == pytest.approx(objetivo, rel=0.15)
@@ -245,7 +245,19 @@ def test_las_firmas_limpias_nunca_tienen_maniobra_activa(panel):
 
 def test_toda_tipologia_generada_esta_documentada(panel):
     assert set(panel["tipologia"]).issubset(fs.TIPOLOGIAS)
-    assert all(isinstance(v, str) and v for v in fs.TIPOLOGIAS.values())
+    assert all(v.descripcion for v in fs.TIPOLOGIAS.values())
+
+
+def test_toda_maniobra_cita_su_indicador_de_origen():
+    """
+    La cita ata cada tipología a un indicador publicado en vez de a la intuición de
+    quien escribió el generador. Si una maniobra no puede citar nada, probablemente
+    no exista.
+    """
+    for nombre, tip in fs.TIPOLOGIAS.items():
+        if nombre == "limpia":
+            continue
+        assert "GAFI" in tip.fuente or "GAFILAT" in tip.fuente, nombre
 
 
 # ---------------------------------------------------------------------------
@@ -329,16 +341,21 @@ def test_la_calibracion_avisa_cuando_no_es_factible():
     No es un bug: es una restricción económica. Antes se topeaba en silencio y salían
     firmas con margen operativo NEGATIVO, que es un estado contable absurdo.
     """
-    d = fs.generar(n_firmas=500, ejercicios=3, semilla=7, prevalencia=0.02, brecha=100.0)
+    # n y prevalencia suficientes para que HAYA subfacturadoras —con seis tipologías,
+    # el 2% de 500 firmas a veces no deja ninguna— pero por debajo del umbral que
+    # hace factible el objetivo.
+    d = fs.generar(n_firmas=1000, ejercicios=3, semilla=7, prevalencia=0.04, brecha=100.0)
     assert d.attrs["calibrado"] is False
     assert d.attrs["discrepancia_lograda"] < d.attrs["objetivo_discrepancia"]
+
     sub = d[(d["tipologia"] == "subfacturacion_exportaciones") & d["maniobra_activa"]]
+    assert not sub.empty, "el caso a proteger necesita al menos una subfacturadora"
     assert (sub["resultado_operativo"] / sub["ingresos"]).median() > 0, \
         "una firma con margen negativo delata la maniobra por la vía equivocada"
 
 
 def test_con_prevalencia_suficiente_la_calibracion_se_logra():
-    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.30, brecha=100.0)
+    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.45, brecha=100.0)
     assert d.attrs["calibrado"] is True
     assert d.attrs["discrepancia_lograda"] == pytest.approx(
         d.attrs["objetivo_discrepancia"], rel=0.15)
@@ -362,7 +379,7 @@ def test_el_umbral_teorico_coincide_con_el_empirico():
     es lo que hace creíble a las dos.
     """
     minimo = fs.share_exportador_minimo(100.0)
-    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.20, brecha=100.0)
+    d = fs.generar(n_firmas=1500, ejercicios=3, semilla=7, prevalencia=0.40, brecha=100.0)
     sub = d[d["tipologia"] == "subfacturacion_exportaciones"]
     share = sub["exportaciones"].sum() / d["exportaciones"].sum()
     assert share >= minimo * 0.95 and d.attrs["calibrado"]
@@ -371,3 +388,83 @@ def test_el_umbral_teorico_coincide_con_el_empirico():
 def test_una_intensidad_maxima_imposible_falla():
     with pytest.raises(ValueError, match="intensidad"):
         fs.share_exportador_minimo(100.0, intensidad_maxima=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Las tipologías traídas de los indicadores de GAFI
+# ---------------------------------------------------------------------------
+def test_la_fachada_factura_por_encima_de_su_capacidad_instalada(panel_tipologias):
+    """
+    LA VARIANTE DIFÍCIL. La operación es real: nómina y activo fijo quedan donde los
+    puso el sector. Lo que sobra es facturación, así que la firma produce más de lo
+    que su capacidad explica y su margen mejora —el dinero inyectado no tiene costo—.
+    """
+    d = panel_tipologias
+    f = d[(d["tipologia"] == "fachada") & d["maniobra_activa"]]
+    limpias = d[~d["maniobra_activa"]]
+    assert _ratio(f, "ingresos", "activo_fijo") > _ratio(limpias, "ingresos", "activo_fijo")
+    assert _ratio(f, "resultado_operativo", "ingresos") > \
+        _ratio(limpias, "resultado_operativo", "ingresos")
+
+
+def test_la_fachada_es_mucho_menos_visible_que_la_pantalla(panel_tipologias):
+    """
+    Es la razón de haberla agregado. La pantalla no tiene cuerpo y salta a la vista;
+    la fachada tiene empleados y planta de verdad, así que no hay anomalía
+    estructural que buscar. Un dataset con sólo pantallas sobreestima cualquier
+    detector.
+    """
+    d, cals = panel_tipologias, fs.calibraciones()
+    limpias = _normalizado(d[~d["maniobra_activa"]], cals).median()
+    fachada = _normalizado(d[(d["tipologia"] == "fachada") & d["maniobra_activa"]], cals).median()
+    pantalla = _normalizado(d[(d["tipologia"] == "pantalla") & d["maniobra_activa"]], cals).median()
+
+    # En términos absolutos y no de un cociente: la pantalla queda casi sin nómina,
+    # la fachada la conserva en dos tercios de lo normal de su sector. Las dos se
+    # desvían, pero sólo una lo hace de una forma que salta a la vista.
+    assert pantalla / limpias < 0.20, "la pantalla tiene que quedar casi sin nómina"
+    assert 0.45 < fachada / limpias < 0.85, "la fachada conserva su nómina real"
+
+
+def test_las_compras_desproporcionadas_se_financian_con_deuda(panel_tipologias):
+    """Compró por encima de lo que su operación sostiene, y no lo pagó con resultados."""
+    d = panel_tipologias
+    c = d[(d["tipologia"] == "compras_desproporcionadas") & d["maniobra_activa"]]
+    limpias = d[~d["maniobra_activa"]]
+    assert _ratio(c, "pasivo", "patrimonio") > _ratio(limpias, "pasivo", "patrimonio") * 3
+    assert _ratio(c, "activo_fijo", "ingresos") > _ratio(limpias, "activo_fijo", "ingresos") * 2
+
+
+def test_la_entidad_reactivada_no_se_distingue_en_corte_transversal(panel_tipologias):
+    """
+    PROPIEDAD DESEADA. Su anomalía es la TRAYECTORIA, no el nivel: mirando un solo
+    ejercicio es una empresa cualquiera. Es lo que obliga a un detector a usar la
+    historia de la firma y no una foto.
+    """
+    d, cals = panel_tipologias, fs.calibraciones()
+    limpias = _normalizado(d[~d["maniobra_activa"]], cals).median()
+    nueva = _normalizado(d[(d["tipologia"] == "nueva_alto_volumen")
+                           & d["maniobra_activa"]], cals).median()
+    assert abs(nueva / limpias - 1) < 0.15
+
+
+def test_la_entidad_reactivada_salta_despues_de_la_latencia(panel_tipologias):
+    """Y en la trayectoria sí se ve: el salto es de un orden de magnitud."""
+    d = panel_tipologias.sort_values(["firma", "ejercicio"]).copy()
+    d["crec"] = d.groupby("firma")["ingresos"].pct_change()
+    maximo = d.groupby(["firma", "tipologia"])["crec"].max().reset_index()
+    nueva = maximo[maximo["tipologia"] == "nueva_alto_volumen"]["crec"].median()
+    limpia = maximo[maximo["tipologia"] == "limpia"]["crec"].median()
+    assert nueva > 5 * limpia
+    assert nueva < 100, "un salto de dos órdenes se detecta a ojo y vuelve trivial el caso"
+
+
+def test_la_latencia_ocurre_antes_del_salto_y_no_al_reves():
+    """Sin ejercicios latentes previos no hay nada que observar."""
+    d = fs.generar(n_firmas=600, ejercicios=4, semilla=13, prevalencia=0.42)
+    nuevas = d[d["tipologia"] == "nueva_alto_volumen"]
+    if nuevas.empty:
+        pytest.skip("sin firmas reactivadas en esta semilla")
+    por_firma = nuevas.groupby("firma")["maniobra_activa"]
+    assert not por_firma.first().any(), "alguna arranca ya reactivada"
+    assert por_firma.last().all(), "alguna nunca se reactiva"

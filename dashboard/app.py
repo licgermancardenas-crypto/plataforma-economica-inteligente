@@ -1825,40 +1825,66 @@ def pagina_firmas():
         esp_m = lambda s: s["sector"].map(lambda x: cals[x].margen_operativo)   # noqa: E731
         esp_s = lambda s: s["sector"].map(lambda x: cals[x].participacion_salarial)  # noqa: E731
 
-        def perfil(s, etiqueta):
+        # El crecimiento máximo es de la TRAYECTORIA de cada firma: sin esa columna,
+        # la entidad reactivada es indistinguible de una limpia y la tabla mentiría.
+        crec = df.sort_values(["firma", "ejercicio"]).copy()
+        crec["crec"] = crec.groupby("firma")["ingresos"].pct_change()
+        maximo = crec.groupby(["firma", "tipologia"])["crec"].max()
+
+        def perfil(s, etiqueta, tip):
             return {"tipología": etiqueta, "firmas": s["firma"].nunique(),
                     "margen op.": ((s["resultado_operativo"] / s["ingresos"]) / esp_m(s)).median(),
                     "nómina": ((s["salarios"] / s["ingresos"]) / esp_s(s)).median(),
+                    "ing. / act. fijo": (s["ingresos"] / s["activo_fijo"]).median(),
+                    "pasivo / patrim.": (s["pasivo"] / s["patrimonio"]).median(),
                     "caja / ingresos": (s["caja"] / s["ingresos"]).median(),
-                    "import / costos": (s["importaciones"] / s["otros_costos"]).median()}
+                    "import / costos": (s["importaciones"] / s["otros_costos"]).median(),
+                    "crec. máx.": maximo.xs(tip, level="tipologia").median()}
 
-        filas = [perfil(limpias, "(sin maniobra)")]
+        filas = [perfil(limpias, "(sin maniobra)", "limpia")]
         for tip in sorted(set(df["tipologia"]) - {"limpia"}):
             s = df[(df["tipologia"] == tip) & df["maniobra_activa"]]
             if not s.empty:
-                filas.append(perfil(s, tip))
+                filas.append(perfil(s, tip, tip))
         tabla = pd.DataFrame(filas).set_index("tipología")
-        st.dataframe(tabla.style.format({"margen op.": "{:.2f}", "nómina": "{:.2f}",
-                                         "caja / ingresos": "{:.3f}",
-                                         "import / costos": "{:.3f}"}), **ANCHO)
+        st.dataframe(tabla.style.format({
+            "margen op.": "{:.2f}", "nómina": "{:.2f}", "ing. / act. fijo": "{:.2f}",
+            "pasivo / patrim.": "{:.2f}", "caja / ingresos": "{:.3f}",
+            "import / costos": "{:.3f}", "crec. máx.": "{:.0%}"}), **ANCHO)
         st.caption(
             "**Margen y nómina van normalizados por el sector de cada firma**: 1,00 es "
             "«igual a lo normal de su actividad». Sin esa normalización se compara "
             "Enseñanza (94% de nómina) contra Minas (29%) y no la maniobra. La "
-            "estructura sectorial sale de la Cuenta de Generación del Ingreso del INDEC.")
+            "estructura sectorial sale de la Cuenta de Generación del Ingreso del INDEC. "
+            "**`crec. máx.` es el mayor salto interanual de facturación de la firma**: es "
+            "una propiedad de la trayectoria, no del ejercicio.")
+
+    with st.expander("De dónde sale cada tipología"):
+        st.caption(
+            "Cada maniobra cita el indicador que la respalda. Hay un test que verifica "
+            "que ninguna exista sin fuente: si no puede citar nada, probablemente no "
+            "exista. **De los 35 indicadores de GAFI, sólo unos siete son observables en "
+            "un estado contable anual** — el 80% son de documentos aduaneros y de "
+            "movimientos de cuenta, que un balance no contiene.")
+        st.dataframe(pd.DataFrame(
+            [{"tipología": k, "descripción": v.descripcion, "fuente": v.fuente}
+             for k, v in fs.TIPOLOGIAS.items() if k != "limpia"]).set_index("tipología"),
+            **ANCHO)
 
     c5, c6 = st.columns(2)
     with c5, st.container(border=True):
-        st.subheader("Ninguna se identifica con una sola razón")
+        st.subheader("Dos son deliberadamente difíciles")
         st.markdown(
-            "La **pantalla** es la más visible: factura sin nómina ni activo fijo.\n\n"
-            "La **sobrefacturación** sólo se separa mirando cuánto importa respecto de "
-            "sus pares; su margen comprimido no alcanza.\n\n"
+            "La **fachada** conserva nómina y planta porque **son reales**: no hay "
+            "anomalía estructural que buscar, sólo factura más de lo que esa capacidad "
+            "explica. Un dataset con sólo pantallas sobreestima cualquier detector.\n\n"
+            "La **entidad reactivada** es indistinguible en corte transversal — mirá su "
+            "fila: margen y nómina normales. Su anomalía está en `crec. máx.`, o sea en "
+            "la **trayectoria**. Obliga a usar la historia de la firma y no una foto.\n\n"
             "La **subfacturación** comprime el margen, pero eso lo comparte con "
-            "cualquier empresa que simplemente gana poco. El estado contable la "
-            "**señala y no la identifica**: lo que la identifica es comparar contra lo "
-            "que declara la contraparte — que es exactamente lo que hace el módulo de "
-            "comercio espejo en agregado.")
+            "cualquier empresa que simplemente gana poco: el estado contable la "
+            "**señala y no la identifica**. Lo que la identifica es comparar contra lo "
+            "que declara la contraparte — que es lo que hace el comercio espejo.")
     with c6, st.container(border=True):
         st.subheader("El puente con el resultado macro")
         st.markdown(
