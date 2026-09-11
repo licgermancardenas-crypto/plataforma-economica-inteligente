@@ -1745,6 +1745,16 @@ def pagina_espejo():
 # generó `platec.firmas_sinteticas` a partir de una semilla. Por eso el aviso va
 # arriba de todo y no al pie: en una plataforma cuyo valor es que no inventa
 # números, la excepción tiene que anunciarse antes de que alguien lea una cifra.
+@st.cache_data(ttl=3600, show_spinner="Entrenando y evaluando el detector...")
+def _deteccion(n: int, ejercicios: int, semilla: int, prevalencia: float, brecha: float):
+    from platec import deteccion as det
+    from platec import firmas_sinteticas as fs
+
+    df = fs.generar(n_firmas=n, ejercicios=ejercicios, semilla=semilla,
+                    prevalencia=prevalencia, brecha=brecha)
+    return det.evaluar(df, fs.calibraciones())
+
+
 @st.cache_data(ttl=3600, show_spinner="Generando el panel sintético...")
 def _firmas(n: int, ejercicios: int, semilla: int, prevalencia: float, brecha: float):
     from platec import firmas_sinteticas as fs
@@ -1910,6 +1920,113 @@ def pagina_firmas():
         st.caption(f"{len(df):,} filas · {df['firma'].nunique():,} firmas · "
                    f"{df['sector'].nunique()} sectores · semilla {int(semilla)}. "
                    "Se muestran las primeras 300.")
+
+    # --- el detector --------------------------------------------------------
+    st.divider()
+    seccion("El detector")
+    try:
+        ev = _deteccion(n, 4, int(semilla), prevalencia, float(brecha))
+    except ValueError as e:
+        st.info(f"No se puede evaluar con esta selección: {e}")
+        ev = None
+
+    if ev is not None:
+        st.caption(
+            "Características observables por firma —razones de un balance y un estado de "
+            "resultados, normalizadas por sector— y validación cruzada. La unidad es la "
+            "**firma** y no el ejercicio: se investiga una empresa, no su año fiscal 2022, "
+            "y evaluar por ejercicio filtraría porque los otros años de la misma firma "
+            "estarían en el entrenamiento.")
+        if ev["positivas"] < 30:
+            st.warning(
+                f"**Sólo {ev['positivas']} firmas con maniobra en este panel: las métricas "
+                f"de abajo son ruidosas.** No es que el detector ande peor — es que con "
+                f"tan pocas positivas la validación cruzada estima mal. Subí el número de "
+                f"firmas o la prevalencia para que el número signifique algo.")
+        m = st.columns(4)
+        with m[0], st.container(border=True):
+            st.metric("PR-AUC", f"{ev['pr_auc']:.3f}", f"azar {ev['azar']:.3f}",
+                      delta_color="off")
+            st.caption("La métrica que corresponde bajo desbalance. **Su piso de azar es "
+                       "la prevalencia, no 0,5.**")
+        with m[1], st.container(border=True):
+            st.metric("ROC-AUC", f"{ev['roc_auc']:.3f}", "exagera acá", delta_color="off")
+            st.caption("Se informa porque todo el mundo lo pide. Se apoya en la tasa de "
+                       "falsos positivos, y con tantos negativos esa tasa se mueve poco "
+                       "**aunque las alertas sean casi todas falsas**.")
+        with m[2], st.container(border=True):
+            st.metric(f"Precisión @ {ev['presupuesto']}", f"{ev['precision_en_k']:.1%}")
+            st.caption("La única operativamente honesta: de las k firmas alertadas, "
+                       "cuántas manipulaban de verdad.")
+        with m[3], st.container(border=True):
+            st.metric("Exactitud", "no se informa")
+            st.caption(f"Con prevalencia {ev['azar']:.0%}, predecir «todas limpias» acierta "
+                       f"el {1 - ev['azar']:.0%}. No es conservadora: es inservible.")
+
+        y = (df.groupby("firma")["tipologia"].first().ne("limpia").astype(int)
+             .reindex(ev["puntajes"].index))
+        d1, d2 = st.columns(2)
+        with d1, st.container(border=True):
+            orden = np.argsort(-ev["puntajes"].to_numpy())
+            aciertos = np.cumsum(y.to_numpy()[orden])
+            ks = np.arange(1, len(orden) + 1)
+            tope = min(len(ks), max(ev["presupuesto"] * 6, 60))
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=ks[:tope], y=(aciertos[:tope] / ks[:tope]) * 100,
+                                     mode="lines", line=dict(width=2.4, color=PALETA[0]),
+                                     name="precisión",
+                                     hovertemplate="alertas %{x}<br>precisión %{y:.0f}%"
+                                                   "<extra></extra>"))
+            fig.add_hline(y=ev["azar"] * 100, line=dict(color=COLOR["gris"], width=1,
+                                                        dash="dot"),
+                          annotation_text="azar", annotation_position="bottom right",
+                          annotation_font=dict(size=10, color=COLOR["gris"]))
+            _estilo(fig, height=320, leyenda=False)
+            _titulo(fig, "Precisión según el presupuesto de alertas")
+            fig.update_layout(xaxis_title="firmas alertadas (k)",
+                              yaxis_title="precisión (%)")
+            st.plotly_chart(fig, **ANCHO)
+            st.caption("Un equipo investiga k casos por período. La curva dice qué "
+                       "fracción de esas k alertas sería real: cae a medida que se baja "
+                       "en el ranking, y eso es lo que decide cuánto trabajo se desperdicia.")
+        with d2, st.container(border=True):
+            rec = pd.Series(ev["recall_por_tipologia"]).sort_values()
+            fig = go.Figure(go.Bar(
+                x=rec.values * 100, y=[i.replace("_", " ") for i in rec.index],
+                orientation="h", marker=dict(color=PALETA[0]),
+                text=[f"{v:.0%}" for v in rec.values], textposition="outside",
+                textfont=dict(color="#cbd5e1", size=11),
+                hovertemplate="%{y}: %{x:.0f}%<extra></extra>"))
+            _estilo(fig, height=320, leyenda=False)
+            _titulo(fig, f"Recall por tipología, con {ev['presupuesto']} alertas")
+            fig.update_layout(xaxis_title="detectadas (%)", yaxis_title=None)
+            fig.update_xaxes(range=[0, 118])
+            st.plotly_chart(fig, **ANCHO)
+            st.caption("Qué maniobra se ve y cuál no. Es la lectura más útil del "
+                       "detector: el promedio esconde que una tipología puede estar "
+                       "en cero.")
+
+        with st.container(border=True):
+            st.markdown("**Lo que el detector encontró, y no fue una maniobra**")
+            st.markdown(
+                "La primera corrida dio **PR-AUC 0,89 con prevalencia 2%**: demasiado "
+                "bueno para un problema de AML. La causa estaba en el generador. La "
+                "intensidad exportadora de las firmas limpias se sorteaba en "
+                "[0,00 – 0,35] y la de las subfacturadoras en [0,45 – 0,85] — **soportes "
+                "disjuntos**, así que `exportador > 0,40` las identificaba perfecto. El "
+                "clasificador aprendía a reconocer el sorteo, no la maniobra.\n\n"
+                "Corregido —ahora las limpias también comercian y las manipuladoras "
+                "salen de esa misma población— el PR-AUC bajó a 0,785. **Un detector que "
+                "anda demasiado bien es un diagnóstico sobre el dataset, no un logro.**")
+            st.info(
+                "**La sobrefacturación de importaciones queda en cero, y es un "
+                "resultado.** Aislada en su propio panel da PR-AUC 0,101 contra un azar "
+                "de 0,030: detectable, pero apenas. La diferencia de margen contra las "
+                "limpias vale **0,06 desvíos** de la dispersión natural de rentabilidad "
+                "entre empresas — un margen comprimido lo comparte con cualquier empresa "
+                "que simplemente gana poco. Es la confirmación cuantitativa de lo que el "
+                "indicador de GAFI sugería: *«consistently displays unreasonably low "
+                "profit margins»* es una señal real y **confundida**.")
 
     st.warning(
         "**Lo que este dataset NO prueba.** Un detector entrenado acá encuentra las "

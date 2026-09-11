@@ -228,6 +228,18 @@ displays unreasonably low profit margins»* es una señal real y **confundida**.
 > detector evaluado ahí queda sobreestimado. Es exactamente la razón de haber agregado la
 > fachada.
 
+### En el dashboard
+
+La página **🧪 Firmas sintéticas** trae la evaluación completa: PR-AUC contra su azar, ROC-AUC
+con la advertencia puesta, precisión@k, la **curva de precisión según el presupuesto de
+alertas** —qué fracción de las k alertas sería real, que es lo que decide cuánto trabajo se
+desperdicia— y el recall por tipología.
+
+Avisa cuando hay menos de 30 firmas con maniobra: ahí las métricas son ruidosas por muestra
+chica y no por peor detección. Con el default de 500 firmas al 2% hay **diez** positivas y el
+PR-AUC cae a 0,25; con 2.000 firmas sube a 0,72. Es la misma disciplina que la función de
+potencia del test de estabilidad: un número sin saber cuánto puede moverse no dice nada.
+
 ## 8. Lo que este dataset no prueba
 
 Un detector entrenado acá encuentra las maniobras que uno mismo inyectó. **No dice nada sobre
