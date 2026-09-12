@@ -170,3 +170,115 @@ def test_el_salto_de_las_paso_2019_sobrevive_a_la_limpieza():
     d = stats.log_dif(r, cortes=stats.RECOMPOSICIONES_EMBI)
     assert d.loc["2019-08-12"] > 40, "se borró un movimiento de mercado real"
     assert pd.isna(d.loc["2020-09-10"]), "no se anuló la recomposición de 2020"
+
+
+# ---------------------------------------------------------------------------
+# Tipo de cambio real bilateral
+# ---------------------------------------------------------------------------
+def _tres(n=24, tc=100.0, p=100.0, pe=100.0):
+    idx = pd.date_range("2020-01-01", periods=n, freq="MS")
+    unos = lambda v: pd.Series([v] * n, index=idx, dtype=float)   # noqa: E731
+    return unos(tc), unos(p), unos(pe)
+
+
+def test_el_tcr_sube_cuando_sube_el_tipo_de_cambio_nominal():
+    tc, p, pe = _tres()
+    tc.iloc[12:] *= 2
+    t = stats.tcr_bilateral(tc, p, pe, base=tc.index[0])
+    assert t.iloc[0] == pytest.approx(100.0)
+    assert t.iloc[-1] == pytest.approx(200.0)
+
+
+def test_el_tcr_baja_cuando_sube_la_inflacion_local():
+    """Más precios adentro con el mismo dólar es apreciación real: menos competitivo."""
+    tc, p, pe = _tres()
+    p.iloc[12:] *= 2
+    t = stats.tcr_bilateral(tc, p, pe, base=tc.index[0])
+    assert t.iloc[-1] == pytest.approx(50.0)
+
+
+def test_el_tcr_sube_cuando_sube_la_inflacion_externa():
+    """Es la razón de traer el CPI de EE.UU.: sin él este canal no existe."""
+    tc, p, pe = _tres()
+    pe.iloc[12:] *= 2
+    t = stats.tcr_bilateral(tc, p, pe, base=tc.index[0])
+    assert t.iloc[-1] == pytest.approx(200.0)
+
+
+def test_sin_base_el_ancla_es_el_promedio_del_periodo():
+    """Evita que la lectura dependa de qué mes se eligió como base."""
+    tc, p, pe = _tres()
+    tc.iloc[12:] *= 3
+    t = stats.tcr_bilateral(tc, p, pe)
+    assert t.mean() == pytest.approx(100.0)
+
+
+def test_el_tcr_se_recorta_a_la_interseccion():
+    """Un TCR en fechas donde falta un componente sería una invención."""
+    tc, p, pe = _tres()
+    pe = pe.iloc[6:]
+    t = stats.tcr_bilateral(tc, p, pe)
+    assert len(t) == len(pe)
+
+
+def test_sin_solapamiento_falla_en_vez_de_devolver_vacio():
+    tc, p, pe = _tres()
+    pe.index = pe.index + pd.DateOffset(years=50)
+    with pytest.raises(ValueError, match="solapan"):
+        stats.tcr_bilateral(tc, p, pe)
+
+
+def test_el_tc_deflactado_externo_no_toca_los_precios_locales():
+    """
+    ES LA PROPIEDAD QUE LO HACE USABLE EN EL PASS-THROUGH. Saca la inflación ajena
+    sin meter la propia del lado derecho de la regresión.
+    """
+    tc, p, pe = _tres()
+    p.iloc[12:] *= 5                       # la inflación local se dispara
+    d = stats.tc_deflactado_externo(tc, pe)
+    assert d.nunique() == 1, "los precios locales no deberían moverlo"
+    pe.iloc[12:] *= 2
+    d2 = stats.tc_deflactado_externo(tc, pe)
+    assert d2.iloc[-1] == pytest.approx(d2.iloc[0] * 2)
+
+
+@pytest.mark.skipif(not data.DB_PATH.exists(), reason="requiere data/plataforma.db")
+def test_regresar_la_inflacion_contra_el_tcr_no_usa_el_dato_externo():
+    """
+    LA RAZÓN DE QUE EL TCR NO SEA UN REGRESOR DEL PASS-THROUGH. Como
+    Δlog(TCR) = Δlog(e) + π* − π, la inflación queda a los dos lados. La prueba de
+    que el coeficiente no dice nada: corriendo lo mismo SIN los precios externos, el
+    resultado es prácticamente idéntico. La «relación» no depende del dato que se
+    agregó, así que no es información: es la identidad contable.
+    """
+    sm = pytest.importorskip("statsmodels.api")
+    ipc = data.get_series("ipc_general").dropna()
+    us = data.get_series("cpi_eeuu").dropna()
+    tc = data.get_series("usd_oficial").dropna().resample("MS").last()
+    df = pd.concat({"ipc": ipc, "tc": tc, "us": us}, axis=1).dropna()
+    if len(df) < 40:
+        pytest.skip("muestra insuficiente")
+
+    infl = np.log(df["ipc"]).diff() * 100
+
+    def coef(serie_real):
+        d = pd.concat({"y": infl, "x": (np.log(serie_real) * 100).diff()}, axis=1).dropna()
+        return sm.OLS(d["y"], sm.add_constant(d["x"])).fit().params["x"]
+
+    con_externo = coef(df["tc"] * df["us"] / df["ipc"])
+    sin_externo = coef(df["tc"] / df["ipc"])
+    assert con_externo == pytest.approx(sin_externo, abs=0.02), (
+        f"con externo {con_externo:.3f}, sin externo {sin_externo:.3f}")
+
+
+@pytest.mark.skipif(not data.DB_PATH.exists(), reason="requiere data/plataforma.db")
+def test_el_tcr_real_reproduce_la_devaluacion_de_diciembre_2023():
+    """Anclaje a un episodio conocido: el salto del 13/12/2023 fue de más del 50%."""
+    ipc = data.get_series("ipc_general").dropna()
+    us = data.get_series("cpi_eeuu").dropna()
+    tc = data.get_series("usd_oficial").dropna().resample("MS").last()
+    t = stats.tcr_bilateral(tc, ipc, us)
+    if pd.Timestamp("2023-12-01") not in t.index:
+        pytest.skip("la muestra no llega a diciembre de 2023")
+    salto = t.loc["2023-12-01"] / t.loc["2023-11-01"] - 1
+    assert salto > 0.50, f"el salto dio {salto:.1%}"

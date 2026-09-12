@@ -1,12 +1,17 @@
 {
-  "generado": "2026-09-11T16:03:26Z",
-  "observaciones": 52044,
-  "ultima_obs": "2026-09-11",
+  "generado": "2026-09-12T00:38:51Z",
+  "observaciones": 52454,
+  "ultima_obs": "2026-09-08",
   "series": {
     "base_monetaria": {
-      "obs": 7554,
+      "obs": 7551,
       "desde": "1996-01-02",
-      "hasta": "2026-09-08"
+      "hasta": "2026-09-03"
+    },
+    "cpi_eeuu": {
+      "obs": 439,
+      "desde": "1990-01-01",
+      "hasta": "2026-08-01"
     },
     "desempleo": {
       "obs": 91,
@@ -14,9 +19,9 @@
       "hasta": "2026-01-01"
     },
     "emae_desest": {
-      "obs": 174,
+      "obs": 173,
       "desde": "2012-01-01",
-      "hasta": "2026-06-01"
+      "hasta": "2026-05-01"
     },
     "emae_original": {
       "obs": 270,
@@ -34,9 +39,9 @@
       "hasta": "2026-06-01"
     },
     "inflacion_mensual": {
-      "obs": 1002,
+      "obs": 1001,
       "desde": "1943-03-01",
-      "hasta": "2026-08-01"
+      "hasta": "2026-07-01"
     },
     "intereses_netos": {
       "obs": 127,
@@ -64,9 +69,9 @@
       "hasta": "2026-08-01"
     },
     "reservas": {
-      "obs": 7553,
+      "obs": 7550,
       "desde": "1996-01-03",
-      "hasta": "2026-09-08"
+      "hasta": "2026-09-03"
     },
     "resultado_financiero": {
       "obs": 127,
@@ -79,39 +84,39 @@
       "hasta": "2026-07-01"
     },
     "riesgo_pais": {
-      "obs": 7699,
+      "obs": 7696,
       "desde": "1999-01-22",
-      "hasta": "2026-09-10"
+      "hasta": "2026-09-07"
     },
     "tamar_priv": {
-      "obs": 467,
+      "obs": 464,
       "desde": "2024-10-01",
-      "hasta": "2026-09-09"
+      "hasta": "2026-09-04"
     },
     "tc_mayorista": {
-      "obs": 6010,
+      "obs": 6007,
       "desde": "2002-03-04",
-      "hasta": "2026-09-10"
+      "hasta": "2026-09-07"
     },
     "usd_blue": {
-      "obs": 5731,
+      "obs": 5728,
       "desde": "2011-01-03",
-      "hasta": "2026-09-11"
+      "hasta": "2026-09-08"
     },
     "usd_ccl": {
-      "obs": 5001,
+      "obs": 4998,
       "desde": "2013-01-02",
-      "hasta": "2026-09-11"
+      "hasta": "2026-09-08"
     },
     "usd_mep": {
-      "obs": 2875,
+      "obs": 2872,
       "desde": "2018-10-29",
-      "hasta": "2026-09-11"
+      "hasta": "2026-09-08"
     },
     "usd_oficial": {
-      "obs": 5731,
+      "obs": 5728,
       "desde": "2011-01-03",
-      "hasta": "2026-09-11"
+      "hasta": "2026-09-08"
     }
   }
 }

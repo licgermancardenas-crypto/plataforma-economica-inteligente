@@ -36,6 +36,7 @@ DB_PATH = ROOT / "data" / "plataforma.db"
 TIMEOUT = 40
 UA = {"User-Agent": "plataforma-economica/0.1"}
 
+BLS_BASE = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
 BCRA_BASE = "https://api.bcra.gob.ar/estadisticas/v4.0/Monetarias"
 DATOSGOB_BASE = "https://apis.datos.gob.ar/series/api/series"
 ARGDATOS_BASE = "https://api.argentinadatos.com/v1"
@@ -54,6 +55,41 @@ def fetch_datosgob(external_id: str) -> list[tuple[str, float]]:
         fecha, valor = row[0], row[1]
         if valor is not None:
             out.append((fecha[:10], float(valor)))
+    return out
+
+
+def fetch_bls(external_id: str) -> list[tuple[str, float]]:
+    """
+    CPI de EE.UU. desde el BLS, que es la fuente PRIMARIA (FRED la redistribuye).
+
+    Se eligió BLS sobre FRED por disponibilidad: el CSV público de FRED respondió
+    una vez y después dio ReadTimeout seis intentos seguidos. Acá la serie no es un
+    adorno —sin ella no hay tipo de cambio real bilateral— así que conviene la
+    fuente que contesta.
+
+    La API v1 no pide credenciales pero admite un tope de 10 años por consulta, así
+    que el rango se parte en tramos. Los valores ausentes vienen como "-".
+    """
+    out: list[tuple[str, float]] = []
+    fin = datetime.now(timezone.utc).year
+    for desde in range(1990, fin + 1, 10):
+        hasta = min(desde + 9, fin)
+        r = requests.post(BLS_BASE, headers={**UA, "Content-Type": "application/json"},
+                          json={"seriesid": [external_id], "startyear": str(desde),
+                                "endyear": str(hasta)}, timeout=TIMEOUT)
+        j = r.json()
+        if j.get("status") != "REQUEST_SUCCEEDED":
+            raise RuntimeError(f"bls: {j.get('message') or j.get('status')}")
+        series = j.get("Results", {}).get("series") or []
+        for punto in (series[0].get("data", []) if series else []):
+            periodo = punto.get("period", "")
+            if not periodo.startswith("M") or periodo == "M13":   # M13 es el anual
+                continue
+            try:
+                valor = float(punto["value"])
+            except (ValueError, KeyError):
+                continue                                          # ausentes vienen "-"
+            out.append((f"{punto['year']}-{periodo[1:]}-01", valor))
     return out
 
 
@@ -97,6 +133,7 @@ FETCHERS = {
     "datosgob_series": fetch_datosgob,
     "bcra": fetch_bcra,
     "argentinadatos": fetch_argentinadatos,
+    "bls": fetch_bls,
 }
 
 

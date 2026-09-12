@@ -398,6 +398,62 @@ de testear si hace falta partirla.
 
 ---
 
+## 8. Tipo de cambio real bilateral: para qué sirve y para qué no
+
+Con el CPI de EE.UU. en el catálogo, `stats.tcr_bilateral` calcula
+**TCR = e · P\* / P** (sube = depreciación real = más competitivo).
+
+### El error que la pendiente inducía
+
+La nota decía «el pass-through usa TC nominal; para RER bilateral falta CPI externo», lo que
+sugiere reemplazar uno por otro. **Hacerlo estaría mal.** En log-diferencias,
+
+```
+Δlog(TCR) = Δlog(e) + π* − π
+```
+
+así que regresar la inflación π contra Δlog(TCR) pone a **π de los dos lados de la ecuación**.
+El coeficiente resultante mezcla el pass-through con un término mecánico de −var(π) y no se
+puede leer como elasticidad.
+
+Medido en esta muestra da **+0,062 (p = 0,10)** — cerca de cero, pero eso es una casualidad:
+los dos términos casi se cancelan. La prueba de que el número no dice nada es que **el mismo
+test ignorando los precios externos da +0,060**. La «relación» no depende del dato que se
+agregó: es la identidad contable, no economía. Hay un test que fija esa equivalencia.
+
+### Lo que sí corresponde
+
+Deflactar el tipo de cambio **sólo por precios externos** (`e · P*`): saca la inflación ajena
+sin meter la propia del lado derecho.
+
+| Regresor | Traslado a 6 meses |
+|---|---|
+| TC nominal | 53,8% |
+| TC × precios EE.UU. | **54,7%** |
+
+**+0,9 puntos porcentuales.** Chico, y ahora es un número y no un supuesto: la inflación de
+EE.UU. promedia 0,28% mensual contra 3,99% de devaluación argentina, o sea el **7%**. La
+corrección es de segundo orden por construcción, y saberlo con precisión vale más que
+sospecharlo.
+
+### El TCR como indicador
+
+Es para lo que sirve, y reproduce los episodios conocidos (base = promedio del período = 100):
+
+| Mes | TCR |
+|---|---|
+| 2017-01 | 77,4 |
+| 2019-12 | 115,7 |
+| 2023-11 | 83,0 |
+| **2023-12** | **145,6** |
+| 2026-07 | 84,5 |
+
+El salto de diciembre de 2023 es la devaluación, y está anclado en un test. Lo que sigue es lo
+que vale la pena mirar: **julio de 2026 está en 84,5 y noviembre de 2023 estaba en 83,0.** En
+dos años y medio se erosionó prácticamente toda la ganancia real de aquella devaluación.
+
+---
+
 ## Dónde sigue esto
 
 - **El método**, con qué se tomó de cada paper y qué no: [literatura](notas/literatura.md) —

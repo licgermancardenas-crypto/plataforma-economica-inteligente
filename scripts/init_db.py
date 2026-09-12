@@ -38,6 +38,12 @@ SOURCES = [
      "Dólar desde 2011 y riesgo país desde 1999. El external_id es el path bajo /v1."),
     ("dolarapi",       "dolarApi (cotización en tiempo real)",
      "https://dolarapi.com/v1", "Solo valor actual. Fallback tiempo real del TC."),
+    ("bls",            "Bureau of Labor Statistics (EE.UU.)",
+     "https://api.bls.gov/publicAPI/v1",
+     "CPI de EE.UU. para el tipo de cambio real bilateral. Se usa BLS y no FRED porque "
+     "es la fuente PRIMARIA —FRED redistribuye— y porque FRED respondió de forma "
+     "intermitente desde acá. La v1 no pide credenciales; tope de 10 años por consulta, "
+     "así que la ingesta parte el rango."),
 ]
 
 INDICATORS = [
@@ -58,6 +64,9 @@ INDICATORS = [
      "períodos sin depender de un deflactor de precios."),
     ("externo",      "Sector externo (comercio)",    "externo",
      "Exportaciones e importaciones totales (INDEC). El saldo comercial se deriva."),
+    ("precios_externos", "Precios externos (EE.UU.)",  "precios",
+     "CPI de Estados Unidos. Es el deflactor externo del tipo de cambio real\n"
+     "bilateral: sin él, el TC real sólo se puede aproximar con precios locales."),
     ("riesgo",       "Riesgo soberano",              "financiero",
      "Riesgo país (EMBI+ Argentina), diario desde 1999."),
     ("fiscal",       "Resultado fiscal y recaudación", "fiscal",
@@ -130,6 +139,12 @@ SERIES = [
      "Exportaciones totales", "millones USD", "M", "none", "level", 1.0, None, None),
     ("importaciones", "externo", "datosgob_series", "74.3_IIT_0_M_25",
      "Importaciones totales", "millones USD", "M", "none", "level", 1.0, None, None),
+
+    ("cpi_eeuu",      "precios_externos", "bls", "CUUR0000SA0",
+     "CPI de EE.UU. (todos los ítems, sin desestacionalizar)", "índice 1982-84=100",
+     "M", "none", "index", 1.0, "1982-84",
+     "Serie CPI-U del BLS. Sin desestacionalizar a propósito: para un tipo de cambio "
+     "real interesa el nivel de precios efectivo, no su versión suavizada."),
 
     ("riesgo_pais",   "riesgo",  "argentinadatos", "finanzas/indices/riesgo-pais",
      "Riesgo país (EMBI+ Argentina)", "puntos básicos", "D", "none", "level", 1.0, None,

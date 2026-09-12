@@ -64,7 +64,7 @@ pip install -r requirements.txt          # o instalar a nivel usuario
 python3 scripts/snapshot.py load         # base lista en ~1 s desde el snapshot del repo
 streamlit run dashboard/app.py           # dashboard interactivo (http://localhost:8501)
 python3 scripts/analisis.py              # reporte econométrico en consola
-python3 -m pytest                        # suite de tests (256 casos)
+python3 -m pytest                        # suite de tests (265 casos)
 ```
 
 Para reconstruir desde las fuentes en vez de usar el snapshot:
@@ -152,6 +152,26 @@ importaciones: **sobrefacturar exige acceso al dólar oficial, que es lo que el 
 subfacturar exportaciones no exige permiso de nadie.** El control de cambios no elimina el
 arbitraje, lo empuja hacia el lado que no controla. Detalle y límites en
 [`docs/comercio_espejo.md`](docs/comercio_espejo.md).
+
+### El tipo de cambio real: para qué sirve y para qué no
+Con el CPI de EE.UU. en el catálogo (BLS, no FRED — ver abajo), `stats.tcr_bilateral` calcula
+**TCR = e · P\* / P**. Pero la pendiente que lo motivaba —«el pass-through usa TC nominal»—
+inducía un error: como **Δlog(TCR) = Δlog(e) + π\* − π**, regresar la inflación contra el TCR
+la pone **a los dos lados de la ecuación**. La prueba de que el coeficiente no dice nada es que
+el mismo test *ignorando los precios externos* da casi el mismo número (+0,060 contra +0,062).
+
+Lo que sí corresponde es deflactar el tipo de cambio **sólo por precios externos**: el
+pass-through a seis meses pasa de 53,8% a **54,7%**, +0,9 pp. De segundo orden, porque la
+inflación de EE.UU. es el 7% de la devaluación argentina — y ahora es un número medido y no
+un supuesto.
+
+Como indicador, el TCR reproduce los episodios conocidos. Lo que muestra: **julio de 2026 está
+en 84,5 y noviembre de 2023 estaba en 83,0.** En dos años y medio se erosionó prácticamente
+toda la ganancia real de la devaluación de diciembre de 2023.
+
+> **FRED no se usa.** Su CSV público respondió una vez y después dio `ReadTimeout` seis
+> intentos seguidos. BLS es además la fuente **primaria** —FRED redistribuye— así que se ganó
+> procedencia y disponibilidad a la vez.
 
 ### La hipótesis del riesgo país no se caía por falta de datos
 El VAR diario `[riesgo país, TC, brecha]` arrancaba en 2013 porque lo limita el CCL. Sacando

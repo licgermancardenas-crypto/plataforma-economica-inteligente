@@ -155,6 +155,24 @@ que hay más.
 
 ---
 
+## FRED contesta una vez y después no
+
+**Módulo:** `scripts/ingest.py` (`fetch_bls`)
+
+El CSV público de FRED (`fredgraph.csv?id=CPIAUCSL`) respondió bien en la primera consulta y
+después dio `ReadTimeout` en **seis intentos seguidos**. No es un bloqueo —la primera anduvo—
+sino disponibilidad intermitente, que es peor: una prueba rápida hace creer que la fuente
+sirve.
+
+La salida fue ir a **BLS**, que además es la fuente **primaria**: FRED redistribuye datos del
+BLS. Se ganó procedencia y disponibilidad a la vez.
+
+**La clase de error:** confundir «respondió» con «está disponible». Una sola consulta exitosa
+no es evidencia de que una fuente sirva para una ingesta automática. El mismo patrón que ya
+tenía `apis.datos.gob.ar`, que corta por timeout de forma intermitente.
+
+---
+
 # Trampas propias
 
 Las de arriba las pone la fuente. Estas nos las pusimos nosotros, y son peores: una fuente

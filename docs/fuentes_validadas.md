@@ -162,6 +162,26 @@ python3 scripts/validate_sources.py
 
 ---
 
+## 1d. Precios externos
+
+Incorporado 2026-09-11, para el tipo de cambio real bilateral.
+
+| Serie | Fuente / ID | Frecuencia | Unidad | Desde |
+|-------|-------------|-----------|--------|-------|
+| CPI de EE.UU. | BLS · `CUUR0000SA0` | Mensual | Índice 1982-84=100 | 1990-01 |
+
+**Por qué BLS y no FRED.** FRED es la fuente obvia y la que nombraba la nota pendiente, pero
+el CSV público respondió **una vez y después dio `ReadTimeout` seis intentos seguidos**. BLS
+es además la fuente **primaria** —FRED redistribuye datos del BLS— así que la elección mejora
+la procedencia y la disponibilidad a la vez. La API v1 no pide credenciales; el tope es de
+diez años por consulta, y la ingesta parte el rango.
+
+**Sin desestacionalizar, a propósito.** Para un tipo de cambio real interesa el nivel de
+precios efectivo, no su versión suavizada. FRED publica `CPIAUCSL` (desestacionalizada) y
+`CPIAUCNS`; la serie del BLS equivale a la segunda.
+
+---
+
 ## Dónde sigue esto
 
 - **Los errores silenciosos de estas fuentes** —el PIB trimestral ya anualizado, los timeouts

@@ -134,3 +134,64 @@ def log_dif(s: pd.Series, cortes=(), escala: float = 100.0) -> pd.Series:
         if f in d.index:
             d.loc[f] = np.nan
     return d
+
+
+# ---------------------------------------------------------------------------
+# Tipo de cambio real bilateral
+# ---------------------------------------------------------------------------
+# TCR = e · P* / P   —   e en ARS/USD, P* precios externos, P precios locales.
+# Sube = depreciación real = más competitivo.
+#
+# CUIDADO CON DÓNDE SE USA. Es un INDICADOR, no un regresor para el pass-through.
+# En log-diferencias vale
+#
+#     Δlog(TCR) = Δlog(e) + π* − π
+#
+# así que regresar la inflación π contra Δlog(TCR) pone a π de los DOS LADOS de la
+# ecuación. El coeficiente que sale mezcla el pass-through con un término mecánico
+# de −var(π) y no se puede leer como una elasticidad. Medido en esta muestra da
+# +0,062 (p = 0,10), pero eso es una casualidad: los dos términos casi se cancelan.
+# La prueba de que no dice nada es que el MISMO test ignorando los precios externos
+# da +0,060 — la «relación» no depende del dato que se agregó.
+#
+# Para el pass-through, lo que corresponde es deflactar el tipo de cambio SÓLO por
+# precios externos (`e · P*`): saca la inflación ajena sin meter la propia del lado
+# derecho. Medido acá, mueve el traslado a 6 meses de 53,8% a 54,7% — noventa
+# centésimas, porque la inflación de EE.UU. es apenas el 7% de la devaluación
+# argentina. Chico, pero ahora es un número y no un supuesto.
+def tcr_bilateral(tc: pd.Series, precios_locales: pd.Series, precios_externos: pd.Series,
+                  base=None) -> pd.Series:
+    """
+    Tipo de cambio real bilateral, en índice con base = 100 en `base`.
+
+    `base` puede ser una fecha o None; con None se usa el promedio de todo el
+    período común, que evita que la lectura dependa de qué mes se eligió de ancla.
+
+    Las tres series se alinean por fecha y se recorta a la intersección: un TCR
+    calculado sobre fechas donde falta un componente sería una invención.
+    """
+    df = pd.concat({"tc": tc, "p": precios_locales, "pe": precios_externos},
+                   axis=1).dropna()
+    if df.empty:
+        raise ValueError("las tres series no se solapan en ninguna fecha")
+    real = df["tc"] * df["pe"] / df["p"]
+    ancla = real.loc[base] if base is not None else real.mean()
+    s = real / float(ancla) * 100
+    s.name = "tcr_bilateral"
+    return s
+
+
+def tc_deflactado_externo(tc: pd.Series, precios_externos: pd.Series) -> pd.Series:
+    """
+    Tipo de cambio nominal llevado a precios externos constantes (`e · P*`).
+
+    Es el regresor que corresponde para el pass-through: le saca al tipo de cambio
+    la inflación del país emisor sin introducir la inflación local del lado derecho,
+    que es lo que arruinaría la regresión si se usara el TCR completo.
+    """
+    df = pd.concat({"tc": tc, "pe": precios_externos}, axis=1).dropna()
+    if df.empty:
+        raise ValueError("las series no se solapan en ninguna fecha")
+    s = df["tc"] * df["pe"]
+    s.name = "tc_deflactado_externo"
+    return s

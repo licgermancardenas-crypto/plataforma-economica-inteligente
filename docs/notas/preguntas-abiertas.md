@@ -58,19 +58,7 @@ calibrados acá se comportan de forma parecida sobre datos públicos de otras ju
 
 ---
 
-## 4. El pass-through usa tipo de cambio nominal
-
-**Estado:** aproximación declarada.
-
-Para un tipo de cambio real bilateral falta CPI externo (FRED). Deflactar solo por precios
-locales, como se hace hoy, es aproximado.
-
-**Qué haría falta:** una fuente más en el catálogo (FRED tiene API pública y estable). Es de
-las pendientes más baratas.
-
----
-
-## 5. La tabla de Granger mensual usa un criterio que el proyecto no cree
+## 4. La tabla de Granger mensual usa un criterio que el proyecto no cree
 
 **Estado:** deuda técnica con consecuencia metodológica.
 
@@ -83,7 +71,7 @@ Granger en el dossier del LLM, de donde hoy está excluido a propósito.
 
 ---
 
-## 6. El IPC resulta I(2)
+## 5. El IPC resulta I(2)
 
 **Estado:** decidido para el corto plazo, abierto para el largo.
 
@@ -98,7 +86,7 @@ o un VECM I(2).
 
 ---
 
-## 7. El caché del narrador se pierde en cada reinicio
+## 6. El caché del narrador se pierde en cada reinicio
 
 **Estado:** costo, no rigor.
 
@@ -110,7 +98,7 @@ medidas.
 
 ---
 
-## 8. El job diario commitea aunque no haya datos nuevos
+## 7. El job diario commitea aunque no haya datos nuevos
 
 **Estado:** ruido en el historial.
 
@@ -124,7 +112,7 @@ confiable.
 
 ---
 
-## 9. Falta la deuda pública
+## 8. Falta la deuda pública
 
 **Estado:** bloqueado por la fuente.
 

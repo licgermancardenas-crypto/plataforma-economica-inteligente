@@ -150,6 +150,24 @@ mano.
 
 ---
 
+## Tipo de cambio real y pass-through
+
+La identidad **Δlog(TCR) = Δlog(e) + π\* − π** es de manual, y es la que decide dónde se puede
+usar el TCR y dónde no. Regresar la inflación contra el TCR la pone a los dos lados de la
+ecuación; el regresor correcto para el pass-through es el tipo de cambio deflactado **sólo por
+precios externos**.
+
+**Qué se tomó:** la construcción estándar del TCR bilateral como indicador de competitividad.
+**Qué no se toma:** el TCR como regresor de la inflación, que es lo que la pendiente del
+proyecto sugería sin quererlo.
+
+**Lo que hubo que medir y ningún texto da:** cuánto importa la corrección en esta economía.
+La inflación de EE.UU. es el 7% de la devaluación argentina, y el pass-through a seis meses
+pasa de 53,8% a 54,7%. Es de segundo orden **por la magnitud relativa de las dos inflaciones**,
+no por una propiedad general — en una economía con devaluación moderada la corrección pesaría.
+
+---
+
 ## Métricas bajo desbalance extremo
 
 **Saito & Rehmsmeier (2015), «The precision-recall plot is more informative than the ROC plot
