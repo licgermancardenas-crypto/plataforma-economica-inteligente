@@ -180,3 +180,17 @@ latente desde el principio.
   con cada reinicio, así que la primera visita tras dormir paga la redacción de nuevo.
 - **Costo observado.** No se registra el gasto por lectura; con el caché las llamadas son
   pocas, pero no están medidas.
+
+---
+
+## Dónde sigue esto
+
+- **El menos tipográfico U+2212**, que marcaba como inventada toda IRF negativa legítima, con
+  su clase de error: [trampas de datos](notas/trampas-de-datos.md).
+- **Por qué no hay chat y por qué el determinismo no viene de bajar la temperatura**:
+  [decisiones descartadas](notas/decisiones-descartadas.md).
+- **Qué queda pendiente de la capa** —el caché compartido, el costo sin medir—:
+  [preguntas abiertas](notas/preguntas-abiertas.md).
+- Los dossiers econométricos redactan sobre los resultados de
+  [hallazgos econométricos](hallazgos_econometricos.md); el de espejo, sobre
+  [comercio espejo](comercio_espejo.md).

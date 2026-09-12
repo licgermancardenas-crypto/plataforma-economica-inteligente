@@ -159,3 +159,16 @@ y deben resolverse en la capa de almacenamiento, no después:
 python3 scripts/validate_sources.py
 # Reporte JSON: data/raw/validation_report.json
 ```
+
+---
+
+## Dónde sigue esto
+
+- **Los errores silenciosos de estas fuentes** —el PIB trimestral ya anualizado, los timeouts
+  intermitentes de `apis.datos.gob.ar`, el IPC intervenido—:
+  [trampas de datos](notas/trampas-de-datos.md).
+- **Qué se hace con estas series**: [hallazgos econométricos](hallazgos_econometricos.md).
+- **Las fuentes que faltan y por qué** —deuda pública, balanza de pagos—:
+  [preguntas abiertas](notas/preguntas-abiertas.md).
+- El panel bilateral de Comtrade, que no vive en este catálogo porque no es una serie sino un
+  panel: [comercio espejo](comercio_espejo.md).

@@ -396,3 +396,19 @@ régimen porque tiene 3.264 días. Llevar la cadena monetaria a frecuencia diari
 tramo TC → precios, con IPC de alta frecuencia— es lo que permitiría partir la muestra en vez
 de testear si hace falta partirla.
 
+---
+
+## Dónde sigue esto
+
+- **El método**, con qué se tomó de cada paper y qué no: [literatura](notas/literatura.md) —
+  Cameron-Gelbach-Miller para el bootstrap con pocos clusters, Andrews y Hansen para el
+  sup-Wald, Runkle y Lütkepohl para las bandas de la IRF.
+- **La recomposición del EMBI+** que corregía §5d, con su clase de error:
+  [trampas de datos](notas/trampas-de-datos.md).
+- **Por qué no se parte la muestra mensual por régimen**:
+  [decisiones descartadas](notas/decisiones-descartadas.md).
+- **Lo que queda sin resolver** —el pass-through que el test no puede ver, el TCR con CPI
+  externo, la migración de la tabla de Granger—:
+  [preguntas abiertas](notas/preguntas-abiertas.md).
+- El sector externo alimenta además el [comercio espejo](comercio_espejo.md), que usa la
+  brecha estimada acá como precio del arbitraje.

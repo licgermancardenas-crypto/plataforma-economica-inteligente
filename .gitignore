@@ -16,6 +16,9 @@ data/narrador/
 
 # --- Python ---
 __pycache__/
+# El README de pytest no es una nota: con el vault de Obsidian apuntado al repo
+# aparece en el grafo como un nodo suelto sin ninguna conexión.
+.pytest_cache/
 *.py[cod]
 .venv/
 venv/

@@ -282,3 +282,18 @@ ce.discrepancia(desde=2015)    # panel año × socio × canal
 ce.por_anio(desde=2015)        # agregado con cobertura_fob
 ce.serie_anual("exportador")   # serie con índice de fechas
 ```
+
+---
+
+## Dónde sigue esto
+
+- **La brecha** contra la que se contrasta la discrepancia sale del análisis cambiario de
+  [hallazgos econométricos](hallazgos_econometricos.md).
+- **El β estimado acá calibra** el generador de [firmas sintéticas](firmas_sinteticas.md): la
+  misma maniobra, vista a nivel firma en vez de agregado.
+- **La literatura**, con qué se tomó de GFI y qué no —el factor CIF/FOB fijo del 10% no—:
+  [literatura](notas/literatura.md).
+- **El `fobvalue = 0`** de Comtrade y su clase de error:
+  [trampas de datos](notas/trampas-de-datos.md).
+- **Lo que falta para tener contrafáctico** (el modelo de gravedad):
+  [preguntas abiertas](notas/preguntas-abiertas.md).
