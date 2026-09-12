@@ -152,3 +152,50 @@ arbitrario de socios sería peor que un error, porque nadie lo notaría.
 
 **La clase de error:** paginación implícita. Una API que devuelve «los primeros N» sin decir
 que hay más.
+
+---
+
+# Trampas propias
+
+Las de arriba las pone la fuente. Estas nos las pusimos nosotros, y son peores: una fuente
+ajena no tiene por qué avisar, pero un artefacto propio se puede evitar.
+
+## Un generador puede regalarle la respuesta al detector
+
+**Módulo:** `platec/firmas_sinteticas.py` · **Test:** `tests/test_deteccion.py`
+
+El detector sobre el panel sintético dio **PR-AUC 0,89 con prevalencia 2%**. Para un problema
+de AML eso es demasiado bueno para ser cierto, y lo era. Dos fugas, las dos en el generador:
+
+1. **Soportes disjuntos.** La intensidad exportadora de las firmas limpias se sorteaba en
+   [0,00 – 0,35] y la de las subfacturadoras en [0,45 – 0,85]. Cero solapamiento: la regla
+   `exportador > 0,40` las identificaba perfecto. El clasificador aprendía a reconocer **el
+   sorteo**, no la maniobra.
+2. **Variación nula entre ejercicios.** La intensidad comercial era idéntica todos los años,
+   así que su desvío era **exactamente cero** para toda firma limpia y se volvía el mejor
+   predictor del panel.
+
+Corregido —las limpias también comercian, las manipuladoras salen de esa misma población, y
+hay ruido año a año— el PR-AUC bajó a 0,785.
+
+**Lo que lo delató:** que el número fuera bueno. No hubo excepción, no hubo NaN, no hubo nada
+raro en los datos. Sólo un resultado demasiado lindo.
+
+**La clase de error:** en datos sintéticos, cualquier parámetro sorteado de distribuciones
+distintas según la etiqueta es una fuga potencial. La defensa que quedó es un test que falla
+si una sola característica se lleva más del 95% de la importancia, y la regla de lectura:
+**un detector que anda demasiado bien es un diagnóstico sobre el dataset, no un logro.**
+
+## Una anomalía que salta a la vista no mide ningún detector
+
+**Módulo:** `platec/firmas_sinteticas.py`
+
+La primera calibración de la tipología «entidad reactivada» producía saltos de facturación de
+hasta **400 veces**. Es detectable a ojo, y por eso inútil: un dataset donde la anomalía se ve
+sola no discrimina entre métodos.
+
+Lo mismo, en la otra dirección, con la sobrefacturación de importaciones antes de asignarla a
+firmas importadoras: movía el margen de 0,96 a 0,95 y **no significaba nada**.
+
+**La clase de error:** un caso de prueba mal calibrado —demasiado obvio o demasiado sutil—
+no es un caso de prueba. El rango útil es el que obliga a mirar.

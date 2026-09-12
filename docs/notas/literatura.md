@@ -108,6 +108,78 @@ exige permiso de nadie.
 
 ---
 
+## Tipologías de lavado y sus indicadores
+
+**FATF/Egmont (2021), «Trade-Based Money Laundering: Risk Indicators»** ·
+[PDF](https://www.fatf-gafi.org/content/dam/fatf-gafi/reports/Trade-Based-Money-Laundering-Risk-Indicators.pdf)
+**FATF/Egmont (2020), «TBML: Trends and Developments»** ·
+[PDF](https://www.fatf-gafi.org/content/dam/fatf-gafi/reports/Trade-Based-Money-Laundering-Trends-and-Developments.pdf)
+
+Es el documento operativo del área. **35 indicadores en cuatro categorías**: estructurales
+(12), de actividad comercial (7), de documentos y mercadería (8), y de cuenta y transacciones
+(8).
+
+**Qué se tomó:** tres tipologías de `firmas_sinteticas` salen textualmente de ahí —
+*«purchases clearly exceed the economic capabilities of the entity»*, *«newly formed or
+recently re-activated trade entity engages in high-volume activity»*, *«unexplained periods of
+dormancy»*— y dos más que ya existían quedaron ancladas a sus indicadores. Cada tipología cita
+su fuente en `TIPOLOGIAS[...].fuente`, con test que verifica que ninguna exista sin respaldo.
+
+**Qué NO se puede tomar, y es el hallazgo:** contados contra lo que un balance anual contiene,
+**sólo unos siete de los 35 son observables**. El 80% son de documentos aduaneros y de
+movimientos de cuenta. Eso convierte «el estado contable es un mal lugar para detectar lavado»
+en un número, y es la razón de fondo por la que la fortaleza de esta plataforma sigue siendo
+la medición macro y no la detección a nivel firma.
+
+**GAFILAT — Recopilación de tipologías regionales 2009-2016** ·
+[PDF vía MPF](https://www.mpf.gob.ar/procelac-lavado/files/2020/04/GAFILAT.2009-2016RecopilacionTipologias.pdf)
+**GAFILAT — Informe de tipologías regionales 2019-2020** ·
+[PDF](https://biblioteca.gafilat.org/wp-content/uploads/2024/04/Informe-de-Tipologias-Regionales-de-LA-2019-2020-GAFILAT.pdf)
+
+El organismo regional del que Argentina es miembro. De acá sale la confirmación de que
+**pantalla y fachada son categorías separadas** en la taxonomía oficial, no una sutileza:
+la sección V (vehículos corporativos) le dedica seis entradas propias a la fachada (§54, §64,
+§65, §69 entre otras). El generador sólo modelaba la pantalla, que es la variante fácil.
+
+**UIF Argentina — Tipologías, tendencias y amenazas** ·
+[página](https://www.argentina.gob.ar/uif/internacional/tipolog%C3%ADas-tendencias-amenazas)
+
+Casos argentinos, incluido uno de lavado vía operaciones comerciales e inmobiliarias con
+sociedades pantalla. El sitio bloquea la descarga automática (403): hay que bajar los PDF a
+mano.
+
+---
+
+## Métricas bajo desbalance extremo
+
+**Saito & Rehmsmeier (2015), «The precision-recall plot is more informative than the ROC plot
+when evaluating binary classifiers on imbalanced datasets»** · *PLOS ONE* 10(3)
+
+Sostiene la elección de métricas de `platec/deteccion.py`.
+
+**Qué se tomó:** PR-AUC como métrica principal, con el piso de azar en la **prevalencia** y no
+en 0,5. Y ROC-AUC reportado pero con la advertencia puesta: se apoya en la tasa de falsos
+positivos, y con 98% de negativos esa tasa se mueve poco aunque las alertas sean casi todas
+falsas. Medido en el panel: a prevalencia 1%, ROC-AUC 0,868 contra PR-AUC 0,511.
+
+**Lo que no viene de ningún paper** y es la métrica que más importa acá: **precisión@k**. Un
+equipo investiga k casos por período; lo que decide si el sistema sirve es cuántos de esos k
+eran de verdad. Es el análogo operativo de la función de potencia.
+
+---
+
+## Ley de Benford en auditoría
+
+**Nigrini** — la desviación media absoluta (MAD) como criterio de conformidad; por debajo de
+0,006 se considera conformidad cercana, por encima de 0,015 no conformidad.
+
+**Qué se tomó:** el umbral para validar que el generador produce montos con la distribución de
+primer dígito correcta. No es un adorno: **la desviación de Benford es en sí misma un detector
+forense clásico**, así que un generador con `uniform()` vuelve trivial el problema. Los montos
+salen de una lognormal, que la satisface por construcción.
+
+---
+
 ## Nowcasting
 
 **Regularización elástica (ElasticNet) con validación walk-forward.**

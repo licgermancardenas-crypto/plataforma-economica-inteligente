@@ -14,7 +14,7 @@ Los mensajes de commit son un buen lugar para *registrar* algo y un pésimo luga
 |---|---|
 | [Literatura](literatura.md) | Los papers y métodos que sostienen cada decisión, con qué se tomó de cada uno |
 | [Decisiones descartadas](decisiones-descartadas.md) | Lo que se evaluó y no se hizo, con el motivo. Evita reabrir discusiones cerradas |
-| [Trampas de datos](trampas-de-datos.md) | Los errores silenciosos de las fuentes. La nota más cara de reconstruir si se pierde |
+| [Trampas de datos](trampas-de-datos.md) | Los errores silenciosos de las fuentes, y los que nos pusimos nosotros. La nota más cara de reconstruir si se pierde |
 | [Preguntas abiertas](preguntas-abiertas.md) | Lo pendiente, con qué haría falta para cerrarlo |
 
 ## Convenciones
@@ -31,6 +31,12 @@ gana el que funciona en ambos.
 **Nada de plugins que generen contenido.** Dataview y compañía producen texto que no existe
 fuera de Obsidian: quien abra el repo en GitHub vería un bloque de código en vez de una
 tabla. Si hace falta una tabla, se escribe.
+
+**Se tocan en el mismo commit que el cambio que las afecta.** Es la única defensa práctica
+contra que se desactualicen, y ya falló una vez: tres commits seguidos —los indicadores de
+GAFI, el detector y su página— avanzaron sin pasar por acá, y hubo que ponerlas al día
+después. Si un cambio genera una decisión descartada, una trampa o una fuente nueva, entra en
+ese commit o no entra.
 
 **Una nota no repite lo que ya dice `docs/`.** Si el detalle metodológico está en
 `comercio_espejo.md`, acá va el link y la parte que no cabe ahí: de dónde salió el criterio,

@@ -138,6 +138,36 @@ tema reaparece, la respuesta es esta, no depurar el build.
 
 ---
 
+## Modelar la red de transacciones
+
+**El generador produce estados contables, no un grafo.**
+
+La detección real de lavado se apoya sobre todo en **estructura de red** —quién transacciona
+con quién, ciclos, fan-in/fan-out, cadenas de entidades— y eso no existe en un balance. Es
+literalmente por qué AMLSim genera un grafo de transacciones y no estados contables.
+
+No se hace porque **AMLSim ya lo hace y mejor**. El diferencial de este proyecto es la
+calibración argentina —estructura sectorial del INDEC, el β del canal exportador— y eso no se
+gana compitiendo en el terreno donde el otro ya está.
+
+**Se revisaría si:** aparece acceso a datos transaccionales reales, que en la práctica
+significa un convenio institucional.
+
+---
+
+## Reportar exactitud del detector
+
+**No se informa, y la página dice por qué.**
+
+Con prevalencia del 2%, predecir «todas limpias» acierta el 98%. No es una métrica
+conservadora: es inservible. Se le ocupa un lugar en el dashboard a explicar su ausencia
+antes que dejar que alguien la eche de menos.
+
+Por el mismo motivo, ROC-AUC se reporta pero no se usa como métrica principal: bajo desbalance
+extremo **exagera**.
+
+---
+
 ## Un vault de Obsidian separado del repo
 
 **El vault apunta al repo.**
