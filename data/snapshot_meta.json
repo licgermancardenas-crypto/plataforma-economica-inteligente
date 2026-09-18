@@ -1,12 +1,12 @@
 {
-  "generado": "2026-09-17T16:28:31Z",
-  "observaciones": 52531,
-  "ultima_obs": "2026-09-17",
+  "generado": "2026-09-18T16:00:21Z",
+  "observaciones": 52541,
+  "ultima_obs": "2026-09-18",
   "series": {
     "base_monetaria": {
-      "obs": 7558,
+      "obs": 7559,
       "desde": "1996-01-02",
-      "hasta": "2026-09-14"
+      "hasta": "2026-09-15"
     },
     "cpi_eeuu": {
       "obs": 439,
@@ -59,9 +59,9 @@
       "hasta": "2026-08-01"
     },
     "pib_corriente": {
-      "obs": 89,
+      "obs": 90,
       "desde": "2004-01-01",
-      "hasta": "2026-01-01"
+      "hasta": "2026-04-01"
     },
     "recaudacion_total": {
       "obs": 356,
@@ -69,9 +69,9 @@
       "hasta": "2026-08-01"
     },
     "reservas": {
-      "obs": 7557,
+      "obs": 7558,
       "desde": "1996-01-03",
-      "hasta": "2026-09-14"
+      "hasta": "2026-09-15"
     },
     "resultado_financiero": {
       "obs": 127,
@@ -84,39 +84,39 @@
       "hasta": "2026-07-01"
     },
     "riesgo_pais": {
-      "obs": 7703,
+      "obs": 7704,
       "desde": "1999-01-22",
-      "hasta": "2026-09-16"
+      "hasta": "2026-09-17"
     },
     "tamar_priv": {
-      "obs": 471,
+      "obs": 472,
       "desde": "2024-10-01",
-      "hasta": "2026-09-15"
-    },
-    "tc_mayorista": {
-      "obs": 6014,
-      "desde": "2002-03-04",
       "hasta": "2026-09-16"
     },
-    "usd_blue": {
-      "obs": 5737,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6015,
+      "desde": "2002-03-04",
       "hasta": "2026-09-17"
+    },
+    "usd_blue": {
+      "obs": 5738,
+      "desde": "2011-01-03",
+      "hasta": "2026-09-18"
     },
     "usd_ccl": {
-      "obs": 5007,
+      "obs": 5008,
       "desde": "2013-01-02",
-      "hasta": "2026-09-17"
+      "hasta": "2026-09-18"
     },
     "usd_mep": {
-      "obs": 2881,
+      "obs": 2882,
       "desde": "2018-10-29",
-      "hasta": "2026-09-17"
+      "hasta": "2026-09-18"
     },
     "usd_oficial": {
-      "obs": 5737,
+      "obs": 5738,
       "desde": "2011-01-03",
-      "hasta": "2026-09-17"
+      "hasta": "2026-09-18"
     }
   }
 }
