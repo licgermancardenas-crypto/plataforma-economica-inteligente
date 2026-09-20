@@ -1,7 +1,7 @@
 {
-  "generado": "2026-09-19T15:32:50Z",
-  "observaciones": 52550,
-  "ultima_obs": "2026-09-19",
+  "generado": "2026-09-20T15:38:52Z",
+  "observaciones": 52555,
+  "ultima_obs": "2026-09-20",
   "series": {
     "base_monetaria": {
       "obs": 7560,
@@ -14,9 +14,9 @@
       "hasta": "2026-08-01"
     },
     "desempleo": {
-      "obs": 91,
+      "obs": 92,
       "desde": "2003-01-01",
-      "hasta": "2026-01-01"
+      "hasta": "2026-04-01"
     },
     "emae_desest": {
       "obs": 174,
@@ -99,24 +99,24 @@
       "hasta": "2026-09-18"
     },
     "usd_blue": {
-      "obs": 5739,
+      "obs": 5740,
       "desde": "2011-01-03",
-      "hasta": "2026-09-19"
+      "hasta": "2026-09-20"
     },
     "usd_ccl": {
-      "obs": 5009,
+      "obs": 5010,
       "desde": "2013-01-02",
-      "hasta": "2026-09-19"
+      "hasta": "2026-09-20"
     },
     "usd_mep": {
-      "obs": 2883,
+      "obs": 2884,
       "desde": "2018-10-29",
-      "hasta": "2026-09-19"
+      "hasta": "2026-09-20"
     },
     "usd_oficial": {
-      "obs": 5739,
+      "obs": 5740,
       "desde": "2011-01-03",
-      "hasta": "2026-09-19"
+      "hasta": "2026-09-20"
     }
   }
 }
