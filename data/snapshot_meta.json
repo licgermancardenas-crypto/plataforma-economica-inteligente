@@ -1,12 +1,12 @@
 {
-  "generado": "2026-09-21T17:58:53Z",
-  "observaciones": 52559,
-  "ultima_obs": "2026-09-21",
+  "generado": "2026-09-22T16:30:11Z",
+  "observaciones": 52573,
+  "ultima_obs": "2026-09-22",
   "series": {
     "base_monetaria": {
-      "obs": 7560,
+      "obs": 7561,
       "desde": "1996-01-02",
-      "hasta": "2026-09-16"
+      "hasta": "2026-09-17"
     },
     "cpi_eeuu": {
       "obs": 439,
@@ -29,14 +29,14 @@
       "hasta": "2026-06-01"
     },
     "exportaciones": {
-      "obs": 415,
+      "obs": 416,
       "desde": "1992-01-01",
-      "hasta": "2026-07-01"
+      "hasta": "2026-08-01"
     },
     "importaciones": {
-      "obs": 415,
+      "obs": 416,
       "desde": "1992-01-01",
-      "hasta": "2026-07-01"
+      "hasta": "2026-08-01"
     },
     "inflacion_mensual": {
       "obs": 1002,
@@ -44,9 +44,9 @@
       "hasta": "2026-08-01"
     },
     "intereses_netos": {
-      "obs": 127,
+      "obs": 128,
       "desde": "2016-01-01",
-      "hasta": "2026-07-01"
+      "hasta": "2026-08-01"
     },
     "ipc_general": {
       "obs": 117,
@@ -69,54 +69,54 @@
       "hasta": "2026-08-01"
     },
     "reservas": {
-      "obs": 7559,
+      "obs": 7560,
       "desde": "1996-01-03",
-      "hasta": "2026-09-16"
-    },
-    "resultado_financiero": {
-      "obs": 127,
-      "desde": "2016-01-01",
-      "hasta": "2026-07-01"
-    },
-    "resultado_primario": {
-      "obs": 127,
-      "desde": "2016-01-01",
-      "hasta": "2026-07-01"
-    },
-    "riesgo_pais": {
-      "obs": 7705,
-      "desde": "1999-01-22",
-      "hasta": "2026-09-18"
-    },
-    "tamar_priv": {
-      "obs": 473,
-      "desde": "2024-10-01",
       "hasta": "2026-09-17"
     },
-    "tc_mayorista": {
-      "obs": 6016,
-      "desde": "2002-03-04",
+    "resultado_financiero": {
+      "obs": 128,
+      "desde": "2016-01-01",
+      "hasta": "2026-08-01"
+    },
+    "resultado_primario": {
+      "obs": 128,
+      "desde": "2016-01-01",
+      "hasta": "2026-08-01"
+    },
+    "riesgo_pais": {
+      "obs": 7706,
+      "desde": "1999-01-22",
+      "hasta": "2026-09-21"
+    },
+    "tamar_priv": {
+      "obs": 474,
+      "desde": "2024-10-01",
       "hasta": "2026-09-18"
     },
-    "usd_blue": {
-      "obs": 5741,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6017,
+      "desde": "2002-03-04",
       "hasta": "2026-09-21"
+    },
+    "usd_blue": {
+      "obs": 5742,
+      "desde": "2011-01-03",
+      "hasta": "2026-09-22"
     },
     "usd_ccl": {
-      "obs": 5011,
+      "obs": 5012,
       "desde": "2013-01-02",
-      "hasta": "2026-09-21"
+      "hasta": "2026-09-22"
     },
     "usd_mep": {
-      "obs": 2885,
+      "obs": 2886,
       "desde": "2018-10-29",
-      "hasta": "2026-09-21"
+      "hasta": "2026-09-22"
     },
     "usd_oficial": {
-      "obs": 5741,
+      "obs": 5742,
       "desde": "2011-01-03",
-      "hasta": "2026-09-21"
+      "hasta": "2026-09-22"
     }
   }
 }
