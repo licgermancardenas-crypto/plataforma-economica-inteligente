@@ -1,12 +1,12 @@
 {
-  "generado": "2026-10-02T17:36:20Z",
-  "observaciones": 52654,
-  "ultima_obs": "2026-10-02",
+  "generado": "2026-10-03T15:53:05Z",
+  "observaciones": 52664,
+  "ultima_obs": "2026-10-03",
   "series": {
     "base_monetaria": {
-      "obs": 7569,
+      "obs": 7570,
       "desde": "1996-01-02",
-      "hasta": "2026-09-29"
+      "hasta": "2026-09-30"
     },
     "cpi_eeuu": {
       "obs": 439,
@@ -64,14 +64,14 @@
       "hasta": "2026-04-01"
     },
     "recaudacion_total": {
-      "obs": 356,
+      "obs": 357,
       "desde": "1997-01-01",
-      "hasta": "2026-08-01"
+      "hasta": "2026-09-01"
     },
     "reservas": {
-      "obs": 7568,
+      "obs": 7569,
       "desde": "1996-01-03",
-      "hasta": "2026-09-29"
+      "hasta": "2026-09-30"
     },
     "resultado_financiero": {
       "obs": 128,
@@ -84,39 +84,39 @@
       "hasta": "2026-08-01"
     },
     "riesgo_pais": {
-      "obs": 7714,
+      "obs": 7715,
       "desde": "1999-01-22",
-      "hasta": "2026-10-01"
+      "hasta": "2026-10-02"
     },
     "tamar_priv": {
-      "obs": 482,
+      "obs": 483,
       "desde": "2024-10-01",
-      "hasta": "2026-09-30"
-    },
-    "tc_mayorista": {
-      "obs": 6025,
-      "desde": "2002-03-04",
       "hasta": "2026-10-01"
     },
-    "usd_blue": {
-      "obs": 5752,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6026,
+      "desde": "2002-03-04",
       "hasta": "2026-10-02"
+    },
+    "usd_blue": {
+      "obs": 5753,
+      "desde": "2011-01-03",
+      "hasta": "2026-10-03"
     },
     "usd_ccl": {
-      "obs": 5022,
+      "obs": 5023,
       "desde": "2013-01-02",
-      "hasta": "2026-10-02"
+      "hasta": "2026-10-03"
     },
     "usd_mep": {
-      "obs": 2896,
+      "obs": 2897,
       "desde": "2018-10-29",
-      "hasta": "2026-10-02"
+      "hasta": "2026-10-03"
     },
     "usd_oficial": {
-      "obs": 5752,
+      "obs": 5753,
       "desde": "2011-01-03",
-      "hasta": "2026-10-02"
+      "hasta": "2026-10-03"
     }
   }
 }
