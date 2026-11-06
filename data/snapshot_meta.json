@@ -1,12 +1,12 @@
 {
-  "generado": "2026-11-05T19:38:41Z",
-  "observaciones": 52911,
-  "ultima_obs": "2026-11-05",
+  "generado": "2026-11-06T19:00:33Z",
+  "observaciones": 52920,
+  "ultima_obs": "2026-11-06",
   "series": {
     "base_monetaria": {
-      "obs": 7592,
+      "obs": 7593,
       "desde": "1996-01-02",
-      "hasta": "2026-11-02"
+      "hasta": "2026-11-03"
     },
     "cpi_eeuu": {
       "obs": 440,
@@ -69,9 +69,9 @@
       "hasta": "2026-09-01"
     },
     "reservas": {
-      "obs": 7592,
+      "obs": 7593,
       "desde": "1996-01-02",
-      "hasta": "2026-11-02"
+      "hasta": "2026-11-03"
     },
     "resultado_financiero": {
       "obs": 128,
@@ -84,39 +84,39 @@
       "hasta": "2026-08-01"
     },
     "riesgo_pais": {
-      "obs": 7738,
+      "obs": 7739,
       "desde": "1999-01-22",
-      "hasta": "2026-11-04"
+      "hasta": "2026-11-05"
     },
     "tamar_priv": {
-      "obs": 505,
+      "obs": 506,
       "desde": "2024-10-01",
-      "hasta": "2026-11-03"
-    },
-    "tc_mayorista": {
-      "obs": 6048,
-      "desde": "2002-03-04",
       "hasta": "2026-11-04"
     },
-    "usd_blue": {
-      "obs": 5786,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6049,
+      "desde": "2002-03-04",
       "hasta": "2026-11-05"
+    },
+    "usd_blue": {
+      "obs": 5787,
+      "desde": "2011-01-03",
+      "hasta": "2026-11-06"
     },
     "usd_ccl": {
-      "obs": 5056,
+      "obs": 5057,
       "desde": "2013-01-02",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-06"
     },
     "usd_mep": {
-      "obs": 2930,
+      "obs": 2931,
       "desde": "2018-10-29",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-06"
     },
     "usd_oficial": {
-      "obs": 5786,
+      "obs": 5787,
       "desde": "2011-01-03",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-06"
     }
   }
 }
