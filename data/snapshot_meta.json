@@ -1,7 +1,7 @@
 {
-  "generado": "2026-11-06T19:00:33Z",
-  "observaciones": 52920,
-  "ultima_obs": "2026-11-06",
+  "generado": "2026-11-07T17:33:34Z",
+  "observaciones": 52925,
+  "ultima_obs": "2026-11-07",
   "series": {
     "base_monetaria": {
       "obs": 7593,
@@ -84,9 +84,9 @@
       "hasta": "2026-08-01"
     },
     "riesgo_pais": {
-      "obs": 7739,
+      "obs": 7740,
       "desde": "1999-01-22",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-06"
     },
     "tamar_priv": {
       "obs": 506,
@@ -99,24 +99,24 @@
       "hasta": "2026-11-05"
     },
     "usd_blue": {
-      "obs": 5787,
+      "obs": 5788,
       "desde": "2011-01-03",
-      "hasta": "2026-11-06"
+      "hasta": "2026-11-07"
     },
     "usd_ccl": {
-      "obs": 5057,
+      "obs": 5058,
       "desde": "2013-01-02",
-      "hasta": "2026-11-06"
+      "hasta": "2026-11-07"
     },
     "usd_mep": {
-      "obs": 2931,
+      "obs": 2932,
       "desde": "2018-10-29",
-      "hasta": "2026-11-06"
+      "hasta": "2026-11-07"
     },
     "usd_oficial": {
-      "obs": 5787,
+      "obs": 5788,
       "desde": "2011-01-03",
-      "hasta": "2026-11-06"
+      "hasta": "2026-11-07"
     }
   }
 }
