@@ -1,7 +1,7 @@
 {
-  "generado": "2026-11-08T17:44:03Z",
-  "observaciones": 52929,
-  "ultima_obs": "2026-11-08",
+  "generado": "2026-11-09T22:01:42Z",
+  "observaciones": 52933,
+  "ultima_obs": "2026-11-09",
   "series": {
     "base_monetaria": {
       "obs": 7593,
@@ -99,24 +99,24 @@
       "hasta": "2026-11-05"
     },
     "usd_blue": {
-      "obs": 5789,
+      "obs": 5790,
       "desde": "2011-01-03",
-      "hasta": "2026-11-08"
+      "hasta": "2026-11-09"
     },
     "usd_ccl": {
-      "obs": 5059,
+      "obs": 5060,
       "desde": "2013-01-02",
-      "hasta": "2026-11-08"
+      "hasta": "2026-11-09"
     },
     "usd_mep": {
-      "obs": 2933,
+      "obs": 2934,
       "desde": "2018-10-29",
-      "hasta": "2026-11-08"
+      "hasta": "2026-11-09"
     },
     "usd_oficial": {
-      "obs": 5789,
+      "obs": 5790,
       "desde": "2011-01-03",
-      "hasta": "2026-11-08"
+      "hasta": "2026-11-09"
     }
   }
 }
