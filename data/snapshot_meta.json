@@ -1,7 +1,7 @@
 {
-  "generado": "2026-11-09T22:01:42Z",
-  "observaciones": 52933,
-  "ultima_obs": "2026-11-09",
+  "generado": "2026-11-10T19:26:15Z",
+  "observaciones": 52939,
+  "ultima_obs": "2026-11-10",
   "series": {
     "base_monetaria": {
       "obs": 7593,
@@ -9,9 +9,9 @@
       "hasta": "2026-11-03"
     },
     "cpi_eeuu": {
-      "obs": 440,
+      "obs": 441,
       "desde": "1990-01-01",
-      "hasta": "2026-09-01"
+      "hasta": "2026-10-01"
     },
     "desempleo": {
       "obs": 92,
@@ -84,9 +84,9 @@
       "hasta": "2026-08-01"
     },
     "riesgo_pais": {
-      "obs": 7740,
+      "obs": 7741,
       "desde": "1999-01-22",
-      "hasta": "2026-11-06"
+      "hasta": "2026-11-09"
     },
     "tamar_priv": {
       "obs": 506,
@@ -99,24 +99,24 @@
       "hasta": "2026-11-05"
     },
     "usd_blue": {
-      "obs": 5790,
+      "obs": 5791,
       "desde": "2011-01-03",
-      "hasta": "2026-11-09"
+      "hasta": "2026-11-10"
     },
     "usd_ccl": {
-      "obs": 5060,
+      "obs": 5061,
       "desde": "2013-01-02",
-      "hasta": "2026-11-09"
+      "hasta": "2026-11-10"
     },
     "usd_mep": {
-      "obs": 2934,
+      "obs": 2935,
       "desde": "2018-10-29",
-      "hasta": "2026-11-09"
+      "hasta": "2026-11-10"
     },
     "usd_oficial": {
-      "obs": 5790,
+      "obs": 5791,
       "desde": "2011-01-03",
-      "hasta": "2026-11-09"
+      "hasta": "2026-11-10"
     }
   }
 }
