@@ -1,12 +1,12 @@
 {
-  "generado": "2026-11-12T19:39:26Z",
-  "observaciones": 52953,
-  "ultima_obs": "2026-11-12",
+  "generado": "2026-11-13T19:20:35Z",
+  "observaciones": 52973,
+  "ultima_obs": "2026-11-13",
   "series": {
     "base_monetaria": {
-      "obs": 7594,
+      "obs": 7595,
       "desde": "1996-01-02",
-      "hasta": "2026-11-04"
+      "hasta": "2026-11-05"
     },
     "cpi_eeuu": {
       "obs": 441,
@@ -19,34 +19,34 @@
       "hasta": "2026-04-01"
     },
     "emae_desest": {
-      "obs": 175,
+      "obs": 176,
       "desde": "2012-01-01",
-      "hasta": "2026-07-01"
+      "hasta": "2026-08-01"
     },
     "emae_original": {
-      "obs": 271,
+      "obs": 272,
       "desde": "2004-01-01",
-      "hasta": "2026-07-01"
+      "hasta": "2026-08-01"
     },
     "exportaciones": {
-      "obs": 416,
+      "obs": 417,
       "desde": "1992-01-01",
-      "hasta": "2026-08-01"
-    },
-    "importaciones": {
-      "obs": 416,
-      "desde": "1992-01-01",
-      "hasta": "2026-08-01"
-    },
-    "inflacion_mensual": {
-      "obs": 1003,
-      "desde": "1943-03-01",
       "hasta": "2026-09-01"
     },
+    "importaciones": {
+      "obs": 417,
+      "desde": "1992-01-01",
+      "hasta": "2026-09-01"
+    },
+    "inflacion_mensual": {
+      "obs": 1004,
+      "desde": "1943-03-01",
+      "hasta": "2026-10-01"
+    },
     "intereses_netos": {
-      "obs": 128,
+      "obs": 129,
       "desde": "2016-01-01",
-      "hasta": "2026-08-01"
+      "hasta": "2026-09-01"
     },
     "ipc_general": {
       "obs": 117,
@@ -54,9 +54,9 @@
       "hasta": "2026-08-01"
     },
     "ipc_nucleo": {
-      "obs": 117,
+      "obs": 119,
       "desde": "2016-12-01",
-      "hasta": "2026-08-01"
+      "hasta": "2026-10-01"
     },
     "pib_corriente": {
       "obs": 90,
@@ -64,59 +64,59 @@
       "hasta": "2026-04-01"
     },
     "recaudacion_total": {
-      "obs": 357,
+      "obs": 358,
       "desde": "1997-01-01",
-      "hasta": "2026-09-01"
+      "hasta": "2026-10-01"
     },
     "reservas": {
-      "obs": 7594,
+      "obs": 7595,
       "desde": "1996-01-02",
-      "hasta": "2026-11-04"
-    },
-    "resultado_financiero": {
-      "obs": 128,
-      "desde": "2016-01-01",
-      "hasta": "2026-08-01"
-    },
-    "resultado_primario": {
-      "obs": 128,
-      "desde": "2016-01-01",
-      "hasta": "2026-08-01"
-    },
-    "riesgo_pais": {
-      "obs": 7743,
-      "desde": "1999-01-22",
-      "hasta": "2026-11-11"
-    },
-    "tamar_priv": {
-      "obs": 507,
-      "desde": "2024-10-01",
       "hasta": "2026-11-05"
     },
-    "tc_mayorista": {
-      "obs": 6050,
-      "desde": "2002-03-04",
+    "resultado_financiero": {
+      "obs": 129,
+      "desde": "2016-01-01",
+      "hasta": "2026-09-01"
+    },
+    "resultado_primario": {
+      "obs": 129,
+      "desde": "2016-01-01",
+      "hasta": "2026-09-01"
+    },
+    "riesgo_pais": {
+      "obs": 7744,
+      "desde": "1999-01-22",
+      "hasta": "2026-11-12"
+    },
+    "tamar_priv": {
+      "obs": 508,
+      "desde": "2024-10-01",
       "hasta": "2026-11-11"
     },
-    "usd_blue": {
-      "obs": 5793,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6051,
+      "desde": "2002-03-04",
       "hasta": "2026-11-12"
+    },
+    "usd_blue": {
+      "obs": 5794,
+      "desde": "2011-01-03",
+      "hasta": "2026-11-13"
     },
     "usd_ccl": {
-      "obs": 5063,
+      "obs": 5064,
       "desde": "2013-01-02",
-      "hasta": "2026-11-12"
+      "hasta": "2026-11-13"
     },
     "usd_mep": {
-      "obs": 2937,
+      "obs": 2938,
       "desde": "2018-10-29",
-      "hasta": "2026-11-12"
+      "hasta": "2026-11-13"
     },
     "usd_oficial": {
-      "obs": 5793,
+      "obs": 5794,
       "desde": "2011-01-03",
-      "hasta": "2026-11-12"
+      "hasta": "2026-11-13"
     }
   }
 }
