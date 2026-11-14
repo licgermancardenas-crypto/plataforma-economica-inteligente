@@ -1,12 +1,12 @@
 {
-  "generado": "2026-11-13T19:20:35Z",
-  "observaciones": 52973,
-  "ultima_obs": "2026-11-13",
+  "generado": "2026-11-14T17:45:04Z",
+  "observaciones": 52984,
+  "ultima_obs": "2026-11-14",
   "series": {
     "base_monetaria": {
-      "obs": 7595,
+      "obs": 7596,
       "desde": "1996-01-02",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-11"
     },
     "cpi_eeuu": {
       "obs": 441,
@@ -49,9 +49,9 @@
       "hasta": "2026-09-01"
     },
     "ipc_general": {
-      "obs": 117,
+      "obs": 119,
       "desde": "2016-12-01",
-      "hasta": "2026-08-01"
+      "hasta": "2026-10-01"
     },
     "ipc_nucleo": {
       "obs": 119,
@@ -69,9 +69,9 @@
       "hasta": "2026-10-01"
     },
     "reservas": {
-      "obs": 7595,
+      "obs": 7596,
       "desde": "1996-01-02",
-      "hasta": "2026-11-05"
+      "hasta": "2026-11-11"
     },
     "resultado_financiero": {
       "obs": 129,
@@ -84,39 +84,39 @@
       "hasta": "2026-09-01"
     },
     "riesgo_pais": {
-      "obs": 7744,
+      "obs": 7745,
       "desde": "1999-01-22",
-      "hasta": "2026-11-12"
+      "hasta": "2026-11-13"
     },
     "tamar_priv": {
-      "obs": 508,
+      "obs": 509,
       "desde": "2024-10-01",
-      "hasta": "2026-11-11"
-    },
-    "tc_mayorista": {
-      "obs": 6051,
-      "desde": "2002-03-04",
       "hasta": "2026-11-12"
     },
-    "usd_blue": {
-      "obs": 5794,
-      "desde": "2011-01-03",
+    "tc_mayorista": {
+      "obs": 6052,
+      "desde": "2002-03-04",
       "hasta": "2026-11-13"
+    },
+    "usd_blue": {
+      "obs": 5795,
+      "desde": "2011-01-03",
+      "hasta": "2026-11-14"
     },
     "usd_ccl": {
-      "obs": 5064,
+      "obs": 5065,
       "desde": "2013-01-02",
-      "hasta": "2026-11-13"
+      "hasta": "2026-11-14"
     },
     "usd_mep": {
-      "obs": 2938,
+      "obs": 2939,
       "desde": "2018-10-29",
-      "hasta": "2026-11-13"
+      "hasta": "2026-11-14"
     },
     "usd_oficial": {
-      "obs": 5794,
+      "obs": 5795,
       "desde": "2011-01-03",
-      "hasta": "2026-11-13"
+      "hasta": "2026-11-14"
     }
   }
 }
